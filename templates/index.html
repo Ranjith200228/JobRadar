@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>JobRadar</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+  <style>
+    :root{--navy:#0f172a;--navy1:#1e293b;--navy2:#334155;--navy3:#475569;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--navy);color:#f1f5f9;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;}
+    ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:var(--navy1);}::-webkit-scrollbar-thumb{background:var(--navy2);border-radius:3px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .spinner{display:inline-block;width:18px;height:18px;border:2px solid #ffffff30;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    .pulse{animation:pulse 1.4s ease-in-out infinite;}
+    .kanban-card{cursor:grab;transition:opacity .15s;}
+    .kanban-card:active{cursor:grabbing;}
+    .kanban-card.dragging{opacity:.35;}
+    .drag-over{box-shadow:inset 0 0 0 2px var(--green)!important;}
+    .drop-zone{transition:border-color .2s,background .2s;}
+    .drop-zone.over{border-color:var(--green)!important;background:#22c55e12!important;}
+    textarea,input{outline:none;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback} = React;
+
+/* ── API ── */
+const api = {
+  get:   url       => fetch(url).then(r=>r.json()),
+  post:  (url,body,isForm) => fetch(url,{method:"POST",...(isForm?{body}:{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}).then(r=>r.json()),
+  patch: (url,body)        => fetch(url,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()),
+};
+
+/* ── Reusable atoms ── */
+const Spinner = ({size=18}) => <div className="spinner" style={{width:size,height:size}}/>;
+
+const ScoreBadge = ({score,loading}) => {
+  if(loading) return <span className="pulse text-xs px-2 py-0.5 rounded-full bg-gray-600 text-gray-300">Scoring…</span>;
+  if(score==null) return null;
+  const bg = score>=70?"#22c55e":score>=40?"#f59e0b":"#ef4444";
+  return <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{background:bg}}>{score}%</span>;
+};
+
+const PlatformTag = ({name}) => (
+  <span className="text-xs px-1.5 py-0.5 rounded" style={{background:"#334155",color:"#94a3b8"}}>{name}</span>
+);
+
+const PostedBadge = ({datePosted}) => {
+  if(!datePosted) return null;
+  const h = Math.round((new Date()-new Date(datePosted))/36e5);
+  if(isNaN(h)||h>72) return null;
+  const label = h<1?"Just now":h<24?`🔥 ${h}h ago — apply now!`:`⏱ ${Math.round(h/24)}d ago`;
+  const bg    = h<24?"#14532d":h<48?"#1c3a5e":"#2d2208";
+  const color = h<24?"#4ade80":h<48?"#93c5fd":"#fbbf24";
+  return <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:bg,color}}>{label}</span>;
+};
+
+const ErrorBox  = ({msg}) => msg?<div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{background:"#450a0a",color:"#fca5a5"}}>{msg}</div>:null;
+const InfoBox   = ({msg}) => msg?<div className="rounded-xl px-4 py-3 mb-6 text-sm" style={{background:"#1e3a5f",color:"#93c5fd"}}>ℹ {msg}</div>:null;
+
+/* ── Upload CV Tab ── */
+function UploadCV({profile,onProfileUpdated}) {
+  const [mode,setMode]     = useState("upload"); // "upload"|"paste"
+  const [cvText,setCvText] = useState("");
+  const [loading,setLoading] = useState(false);
+  const [error,setError]   = useState("");
+  const [drag,setDrag]     = useState(false);
+  const inputRef = useRef();
+
+  const uploadFile = async file => {
+    if(!file||!file.name.endsWith(".pdf")){setError("Please select a PDF file.");return;}
+    setLoading(true);setError("");
+    const form = new FormData();form.append("file",file);
+    const res = await api.post("/api/upload-cv",form,true);
+    setLoading(false);
+    if(res.error){setError(res.error);return;}
+    onProfileUpdated(res.profile);
+  };
+
+  const pasteCV = async () => {
+    if(!cvText.trim()){setError("Paste your CV text first.");return;}
+    setLoading(true);setError("");
+    const res = await api.post("/api/upload-cv-text",{text:cvText});
+    setLoading(false);
+    if(res.error){setError(res.error);return;}
+    onProfileUpdated(res.profile);
+    setCvText("");
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto pt-10 px-4">
+      <h2 className="text-2xl font-bold mb-1">Upload Your CV</h2>
+      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>Claude parses every section — experience, projects, certifications — to power ATS scoring and resume generation.</p>
+
+      {/* Mode toggle */}
+      <div className="flex gap-2 mb-5">
+        {["upload","paste"].map(m=>(
+          <button key={m} onClick={()=>setMode(m)}
+            className="px-4 py-1.5 rounded-lg text-sm font-medium"
+            style={mode===m?{background:"#22c55e20",color:"#22c55e"}:{color:"#64748b"}}>
+            {m==="upload"?"📄 Upload PDF":"✏ Paste Text"}
+          </button>
+        ))}
+      </div>
+
+      {mode==="upload" ? (
+        <div className={`drop-zone border-2 border-dashed rounded-xl p-12 text-center mb-5 cursor-pointer ${drag?"over":""}`}
+          style={{borderColor:"#334155",background:"#1e293b"}}
+          onDragOver={e=>{e.preventDefault();setDrag(true);}}
+          onDragLeave={()=>setDrag(false)}
+          onDrop={e=>{e.preventDefault();setDrag(false);uploadFile(e.dataTransfer.files[0]);}}
+          onClick={()=>inputRef.current.click()}>
+          <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={e=>uploadFile(e.target.files[0])}/>
+          {loading
+            ? <div className="flex flex-col items-center gap-3"><Spinner size={32}/><p style={{color:"#94a3b8"}}>Claude is parsing your CV…</p></div>
+            : <>
+                <svg className="mx-auto mb-3" width="40" height="40" fill="none" stroke="#475569" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+                </svg>
+                <p className="font-medium">Drag & drop your PDF, or <span style={{color:"#22c55e"}}>click to browse</span></p>
+                <p className="text-xs mt-1" style={{color:"#64748b"}}>PDF only · max 16 MB</p>
+              </>}
+        </div>
+      ) : (
+        <div className="mb-5">
+          <textarea
+            className="w-full rounded-xl px-4 py-3 text-sm resize-none"
+            style={{background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",minHeight:260}}
+            placeholder="Paste your full CV text here — include all experience, projects, education, certifications…"
+            value={cvText} onChange={e=>setCvText(e.target.value)}/>
+          <button onClick={pasteCV} disabled={loading}
+            className="w-full mt-3 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
+            style={{background:loading?"#334155":"#22c55e",color:"#fff"}}>
+            {loading?<><Spinner/> Parsing with Claude…</>:"Parse CV"}
+          </button>
+        </div>
+      )}
+
+      <ErrorBox msg={error}/>
+
+      {profile && <>
+        <ProfileCard profile={profile} onReupload={()=>inputRef.current?.click()}/>
+        <LinksEditor profile={profile} onProfileUpdated={onProfileUpdated}/>
+      </>}
+    </div>
+  );
+}
+
+function ProfileCard({profile,onReupload}) {
+  const skills = profile.technical_skills||[];
+  const certs  = profile.certifications||[];
+  const edu    = profile.education||[];
+  const projs  = profile.projects||[];
+  return (
+    <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg" style={{background:"#22c55e",color:"#fff"}}>{(profile.full_name||"?")[0]}</div>
+        <div className="flex-1">
+          <p className="font-bold text-lg leading-tight">{profile.full_name}</p>
+          <p className="text-sm" style={{color:"#22c55e"}}>{profile.current_job_title}</p>
+        </div>
+        <span className="text-xs px-2 py-1 rounded-full" style={{background:"#22c55e20",color:"#22c55e"}}>{profile.years_of_experience} yrs exp</span>
+      </div>
+
+      <p className="text-sm mb-4 leading-relaxed" style={{color:"#cbd5e1"}}>{profile.professional_summary}</p>
+
+      {skills.length>0 && <>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Skills</p>
+        <div className="flex flex-wrap gap-1.5 mb-4">{skills.map(s=><span key={s} className="text-xs px-2 py-0.5 rounded" style={{background:"#0f172a",color:"#94a3b8"}}>{s}</span>)}</div>
+      </>}
+
+      {certs.length>0 && <>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Certifications</p>
+        <div className="mb-4">{certs.map((c,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {c}</p>)}</div>
+      </>}
+
+      {edu.length>0 && <>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Education</p>
+        <div className="mb-4">{edu.map((e,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {typeof e==="string"?e:JSON.stringify(e)}</p>)}</div>
+      </>}
+
+      {projs.length>0 && <>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Projects ({projs.length})</p>
+        <div className="mb-3">{projs.map((p,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {p.name}</p>)}</div>
+      </>}
+
+      <button onClick={onReupload} className="text-xs underline mt-1" style={{color:"#64748b"}}>Re-upload a different CV</button>
+    </div>
+  );
+}
+
+function LinksEditor({profile, onProfileUpdated}) {
+  const [links, setLinks] = useState({
+    contact_email: profile.contact_email||"",
+    phone:         profile.phone||"",
+    location_text: profile.location_text||"",
+    linkedin_url:  profile.linkedin_url||"",
+    github_url:    profile.github_url||"",
+    portfolio_url: profile.portfolio_url||"",
+  });
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const res = await api.post("/api/profile/links", links);
+    setSaving(false);
+    if (!res.error) { onProfileUpdated(res.profile); setSaved(true); setTimeout(()=>setSaved(false), 2500); }
+  };
+
+  const fields = [
+    {key:"contact_email", label:"Email",     placeholder:"ranjithmaddirala24@gmail.com", icon:"✉"},
+    {key:"phone",         label:"Phone",     placeholder:"+1 (555) 000-0000",            icon:"📞"},
+    {key:"location_text", label:"Location",  placeholder:"Boca Raton, FL",               icon:"📍"},
+    {key:"linkedin_url",  label:"LinkedIn",  placeholder:"https://linkedin.com/in/yourname", icon:"🔗"},
+    {key:"github_url",    label:"GitHub",    placeholder:"https://github.com/yourname",  icon:"💻"},
+    {key:"portfolio_url", label:"Portfolio", placeholder:"https://yourportfolio.com",    icon:"🌐"},
+  ];
+
+  return (
+    <div className="rounded-xl p-5 mt-4" style={{background:"#1e293b"}}>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="font-semibold text-sm">Contact & Profile Links</p>
+          <p className="text-xs mt-0.5" style={{color:"#64748b"}}>These appear as clickable links in your resume PDF header.</p>
+        </div>
+        <button onClick={save} disabled={saving}
+          className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
+          style={{background:saved?"#052e16":saving?"#334155":"#22c55e",color:saved?"#4ade80":"#fff"}}>
+          {saved?"✓ Saved":saving?"Saving…":"Save Links"}
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {fields.map(({key,label,placeholder,icon})=>(
+          <div key={key}>
+            <label className="text-xs mb-1 block" style={{color:"#64748b"}}>{icon} {label}</label>
+            <input
+              className="w-full rounded-lg px-3 py-2 text-xs"
+              style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
+              placeholder={placeholder}
+              value={links[key]}
+              onChange={e=>setLinks(prev=>({...prev,[key]:e.target.value}))}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Job Feed Tab ── */
+const ALL_PLATFORMS = [
+  {name:"LinkedIn",type:"direct"},{name:"Indeed",type:"direct"},
+  {name:"Glassdoor",type:"direct"},{name:"Google Jobs",type:"direct"},
+  {name:"ZipRecruiter",type:"direct"},{name:"Wellfound",type:"direct"},
+  {name:"Dice",type:"direct"},{name:"Monster",type:"via"},
+  {name:"SimplyHired",type:"via"},{name:"CareerBuilder",type:"via"},
+  {name:"Handshake",type:"via"},{name:"Upwork",type:"via"},
+  {name:"We Work Remotely",type:"via"},{name:"Greenhouse",type:"via"},
+  {name:"Lever",type:"via"},
+];
+
+function JobCard({job,onApply,scoring}) {
+  const [expanded,setExpanded] = useState(false);
+  return (
+    <div className="rounded-xl p-5 mb-3" style={{background:"#1e293b"}}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold leading-snug truncate">{job.job_title}</p>
+          <p className="text-sm mt-0.5" style={{color:"#94a3b8"}}>{job.company_name}{job.location?` · ${job.location}`:""}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <PlatformTag name={job.platform_name}/>
+          <ScoreBadge score={job.match_score} loading={scoring&&job.match_score==null}/>
+        </div>
+      </div>
+
+      <p className="text-sm mb-3" style={{color:"#cbd5e1",display:expanded?"block":"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:expanded?"visible":"hidden",lineHeight:1.6}}>
+        {job.job_description||"No description available."}
+      </p>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <button onClick={()=>setExpanded(x=>!x)} className="text-xs" style={{color:"#64748b"}}>
+          {expanded?"▲ Hide":"▼ View full description"}
+        </button>
+        <PostedBadge datePosted={job.date_posted}/>
+        <button onClick={()=>onApply(job)}
+          className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{background:"#22c55e",color:"#fff"}}>
+          Apply →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function JobFeed({profile,jobs,onJobsUpdated}) {
+  const [query,setQuery]         = useState("");
+  const [location,setLocation]   = useState("");
+  const [platforms,setPlatforms] = useState(["LinkedIn","Indeed","Google Jobs","ZipRecruiter","Glassdoor","Wellfound","Dice"]);
+  const [showPlat,setShowPlat]   = useState(false);
+  const [fetching,setFetching]   = useState(false);
+  const [scoring,setScoring]     = useState(false);
+  const [error,setError]         = useState("");
+  const [localJobs,setLocalJobs] = useState(jobs);
+
+  useEffect(()=>setLocalJobs(jobs),[jobs]);
+
+  const toggle = p => setPlatforms(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]);
+
+  const doFetch = async () => {
+    if(!query.trim()){setError("Enter a job title.");return;}
+    setFetching(true);setError("");
+    const res = await api.post("/api/jobs/fetch",{query,location,platforms});
+    setFetching(false);
+    if(res.error){setError(res.error);return;}
+    const newJobs = res.jobs||[];
+    setLocalJobs(newJobs);onJobsUpdated(newJobs);
+    if(profile&&newJobs.length>0){
+      setScoring(true);
+      const scored = await api.post("/api/jobs/score-all",{});
+      setScoring(false);
+      if(!scored.error){setLocalJobs(scored.jobs);onJobsUpdated(scored.jobs);}
+    }
+  };
+
+  const doApply = async job => {
+    if(job.source_url) window.open(job.source_url,"_blank");
+    const res = await api.post(`/api/jobs/${job.id}/apply`,{});
+    if(!res.error){
+      const updated = localJobs.map(j=>j.id===job.id?res.job:j);
+      setLocalJobs(updated);onJobsUpdated(updated);
+    }
+  };
+
+  const sorted = [...localJobs].sort((a,b)=>(b.match_score||0)-(a.match_score||0));
+
+  return (
+    <div className="max-w-3xl mx-auto pt-10 px-4">
+      <h2 className="text-2xl font-bold mb-1">Job Feed</h2>
+      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>Fetches jobs posted in the <strong style={{color:"#22c55e"}}>last 72 hours only</strong> — fresh every search.</p>
+
+      {!profile && <InfoBox msg="Upload your CV first so jobs can be scored against your profile."/>}
+
+      <div className="rounded-xl p-4 mb-5" style={{background:"#1e293b"}}>
+        <div className="flex gap-3 mb-3">
+          <input className="flex-1 rounded-lg px-3 py-2 text-sm" style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
+            placeholder="Job title e.g. Machine Learning Engineer"
+            value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doFetch()}/>
+          <input className="w-44 rounded-lg px-3 py-2 text-sm" style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
+            placeholder="Location (city, state)"
+            value={location} onChange={e=>setLocation(e.target.value)}/>
+        </div>
+
+        <button onClick={()=>setShowPlat(x=>!x)} className="text-xs mb-2 flex items-center gap-1" style={{color:"#94a3b8"}}>
+          Platforms ({platforms.length}/{ALL_PLATFORMS.length}) {showPlat?"▲":"▼"}
+        </button>
+
+        {showPlat && (
+          <div className="mb-3">
+            <div className="flex flex-wrap gap-1.5 mb-1">
+              {ALL_PLATFORMS.map(({name,type})=>{
+                const active = platforms.includes(name);
+                const ac = type==="direct"?"#22c55e":"#f59e0b";
+                return (
+                  <button key={name} onClick={()=>toggle(name)} title={type==="direct"?"Direct scrape":"Via Google/Indeed"}
+                    className="text-xs px-2 py-1 rounded-full border"
+                    style={active?{background:ac,borderColor:ac,color:"#fff"}:{background:"transparent",borderColor:"#334155",color:"#94a3b8"}}>
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs" style={{color:"#475569"}}>Green = direct scrape · Amber = searched via Google/Indeed</p>
+          </div>
+        )}
+
+        <button onClick={doFetch} disabled={fetching}
+          className="w-full py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
+          style={{background:fetching?"#334155":"#22c55e",color:"#fff"}}>
+          {fetching?<><Spinner/> Fetching fresh jobs…</>:"🔍 Fetch Jobs (Last 72 hrs)"}
+        </button>
+      </div>
+
+      <ErrorBox msg={error}/>
+
+      {scoring && (
+        <div className="rounded-lg px-4 py-3 mb-4 text-sm flex items-center gap-2" style={{background:"#1e3a5f",color:"#93c5fd"}}>
+          <Spinner/> Claude is scoring jobs against your CV…
+        </div>
+      )}
+
+      {sorted.length===0&&!fetching && (
+        <div className="text-center py-16" style={{color:"#475569"}}>
+          <p className="text-lg mb-1">No jobs yet</p>
+          <p className="text-sm">Search above to pull live listings from the last 72 hours.</p>
+        </div>
+      )}
+
+      {sorted.map(job=><JobCard key={job.id} job={job} onApply={doApply} scoring={scoring}/>)}
+    </div>
+  );
+}
+
+/* ── Tracker Tab ── */
+const COLUMNS = ["Saved","Applied","Screening","Technical Interview","Offer","Rejected"];
+const COL_COLORS = {Saved:"#475569",Applied:"#3b82f6",Screening:"#8b5cf6","Technical Interview":"#f59e0b",Offer:"#22c55e",Rejected:"#ef4444"};
+
+function KanbanCard({job,onDragStart}) {
+  return (
+    <div className="kanban-card rounded-lg p-3 mb-2" style={{background:"#0f172a"}}
+      draggable onDragStart={e=>onDragStart(e,job)}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <p className="text-sm font-medium leading-snug flex-1">{job.job_title}</p>
+        <ScoreBadge score={job.match_score}/>
+      </div>
+      <p className="text-xs mb-1.5" style={{color:"#64748b"}}>{job.company_name}</p>
+      <div className="flex items-center justify-between">
+        <PlatformTag name={job.platform_name}/>
+        <span className="text-xs" style={{color:"#475569"}}>{new Date(job.status_updated_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
+}
+
+function KanbanCol({title,jobs,onDrop,isOver}) {
+  const [over,setOver] = useState(false);
+  return (
+    <div className={`rounded-xl flex flex-col ${isOver||over?"drag-over":""}`}
+      style={{background:"#1e293b",minWidth:210,flex:"0 0 210px"}}
+      onDragOver={e=>{e.preventDefault();setOver(true);}}
+      onDragLeave={()=>setOver(false)}
+      onDrop={e=>{setOver(false);onDrop(e,title);}}>
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{borderColor:"#334155"}}>
+        <div className="w-2 h-2 rounded-full" style={{background:COL_COLORS[title]}}/>
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{color:"#94a3b8"}}>{title}</span>
+        <span className="ml-auto text-xs" style={{color:"#475569"}}>{jobs.length}</span>
+      </div>
+      <div className="p-2 flex-1 overflow-y-auto" style={{minHeight:120}}>
+        {jobs.length===0&&<p className="text-xs text-center py-4" style={{color:"#334155"}}>Drop here</p>}
+        {jobs.map(job=><KanbanCard key={job.id} job={job} onDragStart={(e,j)=>e.dataTransfer.setData("jobId",String(j.id))}/>)}
+      </div>
+    </div>
+  );
+}
+
+function Tracker({jobs,onJobsUpdated}) {
+  const [tracker,setTracker]   = useState({});
+  const [overCol,setOverCol]   = useState(null);
+
+  useEffect(()=>{load();},[jobs]);
+
+  const load = async () => {
+    const res = await api.get("/api/tracker");
+    if(!res.error) setTracker(res.tracker||{});
+  };
+
+  const onDrop = async (e,col) => {
+    setOverCol(null);
+    const jobId = e.dataTransfer.getData("jobId");
+    if(!jobId) return;
+    await api.patch(`/api/jobs/${jobId}/status`,{status:col});
+    load();onJobsUpdated();
+  };
+
+  const hasJobs = Object.values(tracker).some(a=>a.length>0);
+
+  return (
+    <div className="pt-10 px-4">
+      <h2 className="text-2xl font-bold mb-1">Application Tracker</h2>
+      <p className="text-sm mb-6" style={{color:"#94a3b8"}}>Drag cards between columns as your applications progress.</p>
+      {!hasJobs&&<div className="text-center py-16" style={{color:"#475569"}}><p className="text-lg mb-1">No applications yet</p><p className="text-sm">Apply to jobs from the Job Feed.</p></div>}
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {COLUMNS.map(col=>(
+          <KanbanCol key={col} title={col} jobs={tracker[col]||[]} isOver={overCol===col}
+            onDrop={onDrop}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Dashboard Tab ── */
+function StatCard({label,value,sub}) {
+  return (
+    <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
+      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{color:"#64748b"}}>{label}</p>
+      <p className="text-3xl font-black">{value}</p>
+      {sub&&<p className="text-xs mt-1" style={{color:"#94a3b8"}}>{sub}</p>}
+    </div>
+  );
+}
+
+function Dashboard({jobs}) {
+  const [data,setData] = useState(null);
+  const chartRef       = useRef();
+  const chartInst      = useRef();
+
+  useEffect(()=>{api.get("/api/dashboard").then(r=>{if(!r.error)setData(r);});},[jobs]);
+
+  useEffect(()=>{
+    if(!data||!chartRef.current) return;
+    if(chartInst.current) chartInst.current.destroy();
+    const stages = ["Applied","Screening","Technical Interview","Offer"];
+    chartInst.current = new Chart(chartRef.current,{
+      type:"bar",
+      data:{labels:stages,datasets:[{label:"Applications",data:stages.map(s=>data.funnel?.[s]||0),backgroundColor:["#3b82f6","#8b5cf6","#f59e0b","#22c55e"],borderRadius:6}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#94a3b8"},grid:{color:"#1e293b"}},y:{ticks:{color:"#94a3b8",stepSize:1},grid:{color:"#334155"},beginAtZero:true}}}
+    });
+  },[data]);
+
+  if(!data) return <div className="flex justify-center pt-20"><Spinner size={32}/></div>;
+
+  return (
+    <div className="max-w-3xl mx-auto pt-10 px-4">
+      <h2 className="text-2xl font-bold mb-1">Dashboard</h2>
+      <p className="text-sm mb-6" style={{color:"#94a3b8"}}>Live analytics across all applications.</p>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <StatCard label="Total Applications" value={data.total_applications} sub="jobs applied to"/>
+        <StatCard label="Response Rate"      value={`${data.response_rate}%`} sub="moved past Applied"/>
+        <StatCard label="Avg Match Score"    value={data.avg_match_score?`${data.avg_match_score}%`:"—"} sub="across applications"/>
+      </div>
+      <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
+        <p className="text-sm font-semibold mb-4">Application Funnel</p>
+        <canvas ref={chartRef} height={180}/>
+      </div>
+    </div>
+  );
+}
+
+/* ── Resume Builder Tab ── */
+function CopyBtn({text}) {
+  const [ok,setOk] = useState(false);
+  const copy = ()=>{navigator.clipboard.writeText(text);setOk(true);setTimeout(()=>setOk(false),2000);};
+  return <button onClick={copy} className="text-xs px-2 py-1 rounded" style={{background:"#334155",color:"#94a3b8"}}>{ok?"✓ Copied":"Copy"}</button>;
+}
+
+function DocCard({title,color,content,downloadHref,downloadLabel,note}) {
+  if(!content) return null;
+  const displayText = typeof content==="string"?content:"";
+  return (
+    <div className="rounded-xl mb-4 overflow-hidden" style={{background:"#1e293b"}}>
+      <div className="flex items-center justify-between px-5 py-3 border-b" style={{borderColor:"#334155"}}>
+        <h3 className="font-semibold text-sm" style={{color}}>{title}</h3>
+        <div className="flex gap-2">
+          {displayText&&<CopyBtn text={displayText}/>}
+          {downloadHref&&(
+            <a href={downloadHref} download className="text-xs px-3 py-1 rounded font-semibold" style={{background:color,color:"#fff"}}>
+              ⬇ {downloadLabel}
+            </a>
+          )}
+        </div>
+      </div>
+      <div className="px-5 py-4 text-sm whitespace-pre-wrap" style={{color:"#cbd5e1",lineHeight:1.75}}>
+        {displayText}
+      </div>
+      {note&&<p className="px-5 pb-3 text-xs" style={{color:"#475569"}}>{note}</p>}
+    </div>
+  );
+}
+
+function ResumePreview({data}) {
+  if(!data) return null;
+  const lines = [
+    `PROFESSIONAL SUMMARY\n${"─".repeat(40)}\n${data.summary||""}`,
+    `\nCORE COMPETENCIES\n${"─".repeat(40)}\n${(data.core_skills||[]).join(" • ")}`,
+    `\nPROFESSIONAL EXPERIENCE\n${"─".repeat(40)}`,
+    ...(data.experience||[]).map(e=>`\n${e.title} — ${e.company}\n${e.dates}\n${(e.bullets||[]).map(b=>`• ${b}`).join("\n")}`),
+    ...(data.projects&&data.projects.length>0?[`\nPROJECTS\n${"─".repeat(40)}`, ...(data.projects||[]).map(p=>`\n${p.name} | ${(p.technologies||[]).join(", ")}\n${(p.bullets||[]).map(b=>`• ${b}`).join("\n")}`)]:[]),
+    ...(data.education&&data.education.length>0?[`\nEDUCATION\n${"─".repeat(40)}`, ...(data.education||[]).map(e=>typeof e==="string"?e:JSON.stringify(e))]:[]),
+    ...(data.certifications&&data.certifications.length>0?[`\nCERTIFICATIONS\n${"─".repeat(40)}`, ...(data.certifications||[]).map(c=>`• ${typeof c==="string"?c:JSON.stringify(c)}`)]:[]),
+  ];
+  return lines.join("\n");
+}
+
+function ResumeBuilder({profile}) {
+  const [jd,setJd]         = useState("");
+  const [loading,setLoading] = useState(false);
+  const [error,setError]   = useState("");
+  const [result,setResult] = useState(null);
+
+  const generate = async () => {
+    if(!jd.trim()){setError("Paste a job description first.");return;}
+    if(!profile){setError("Upload your CV first on the Upload CV tab.");return;}
+    setLoading(true);setError("");setResult(null);
+    const res = await api.post("/api/resume/generate",{jd});
+    setLoading(false);
+    if(res.error){setError(res.error);return;}
+    setResult(res);
+  };
+
+  const resumeText    = result?ResumePreview({data:result.resume}):"";
+  const kws           = result?.ats_keywords||[];
+  const connectLen    = result?.linkedin_connect?.length||0;
+
+  return (
+    <div className="max-w-3xl mx-auto pt-10 px-4">
+      <h2 className="text-2xl font-bold mb-1">Resume Builder</h2>
+      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>
+        Paste any job description — get an ATS-optimized resume, cover letter, cold email & two LinkedIn messages. <strong style={{color:"#22c55e"}}>Zero fabrication</strong> — only your real experience, reframed to match.
+      </p>
+
+      {!profile&&<InfoBox msg="Upload your CV first so Claude knows your real background."/>}
+
+      <div className="rounded-xl p-4 mb-5" style={{background:"#1e293b"}}>
+        <label className="text-xs font-semibold uppercase tracking-wider block mb-2" style={{color:"#64748b"}}>Paste Job Description</label>
+        <textarea
+          className="w-full rounded-lg px-3 py-3 text-sm resize-none"
+          style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9",minHeight:200,lineHeight:1.6}}
+          placeholder="Paste the full job description here — the more detail, the better the ATS match…"
+          value={jd} onChange={e=>setJd(e.target.value)}/>
+        <button onClick={generate} disabled={loading}
+          className="w-full mt-3 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
+          style={{background:loading?"#334155":"#22c55e",color:"#fff"}}>
+          {loading?<><Spinner/> Claude is crafting your documents…</>:"✨ Generate Resume + Cover Letter + Email + LinkedIn"}
+        </button>
+      </div>
+
+      <ErrorBox msg={error}/>
+
+      {result && <>
+        {/* ATS Score */}
+        <div className="rounded-xl p-4 mb-4 flex items-center gap-4" style={{background:"#052e16"}}>
+          <div className="text-4xl font-black" style={{color:"#22c55e"}}>90–95%</div>
+          <div>
+            <p className="font-semibold" style={{color:"#22c55e"}}>Estimated ATS Match Score</p>
+            {kws.length>0&&<p className="text-xs mt-1" style={{color:"#4ade80"}}>Keywords woven in: {kws.slice(0,10).join(", ")}</p>}
+          </div>
+        </div>
+
+        {/* Resume */}
+        <DocCard title="📄 ATS-Optimized Resume" color="#22c55e"
+          content={resumeText}
+          downloadHref="/api/resume/download/resume" downloadLabel="Download PDF"/>
+
+        {/* Cover Letter */}
+        <DocCard title="✉ Professional Cover Letter" color="#3b82f6"
+          content={result.cover_letter}
+          downloadHref="/api/resume/download/cover" downloadLabel="Download PDF"/>
+
+        {/* Cold Email */}
+        <DocCard title="📧 Cold Outreach Email" color="#f59e0b"
+          content={result.cold_email}/>
+
+        {/* LinkedIn Connection Note */}
+        <DocCard title="🔗 LinkedIn Connection Request Note" color="#8b5cf6"
+          content={result.linkedin_connect}
+          note={`${connectLen}/300 characters`}/>
+
+        {/* LinkedIn Outreach Message */}
+        <DocCard title="💼 LinkedIn Outreach Message" color="#06b6d4"
+          content={result.linkedin_msg}/>
+      </>}
+    </div>
+  );
+}
+
+/* ── Settings Modal ── */
+function SettingsModal({onClose}) {
+  const [aKey,setAKey]     = useState("");
+  const [apKey,setApKey]   = useState("");
+  const [status,setStatus] = useState(null);
+  const [keyInfo,setKeyInfo] = useState({});
+
+  useEffect(()=>{api.get("/api/settings").then(r=>{if(!r.error)setKeyInfo(r);});});
+
+  const save = async () => {
+    const res = await api.post("/api/settings",{anthropic_key:aKey||undefined,apify_key:apKey||undefined});
+    if(res.error) setStatus({type:"error",msg:res.error});
+    else{setStatus({type:"ok",msg:res.message});setAKey("");setApKey("");}
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:"#00000080"}} onClick={onClose}>
+      <div className="rounded-2xl p-6 w-full max-w-md" style={{background:"#1e293b"}} onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold">Settings</h3>
+          <button onClick={onClose} style={{color:"#64748b"}}>✕</button>
+        </div>
+
+        {[
+          {label:"Anthropic API Key",val:aKey,set:setAKey,hint:"console.anthropic.com",placeholder:"sk-ant-…",set_key:"anthropic_key_set"},
+          {label:"Apify API Key",    val:apKey,set:setApKey,hint:"apify.com → Settings → Integrations",placeholder:"apify_api_…",set_key:"apify_key_set"},
+        ].map(({label,val,set,hint,placeholder,set_key})=>(
+          <div key={label} className="mb-4">
+            <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{color:"#64748b"}}>
+              {label} {keyInfo[set_key]&&<span style={{color:"#22c55e"}}>✓ saved</span>}
+            </label>
+            <input type="password"
+              className="w-full rounded-lg px-3 py-2 text-sm"
+              style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
+              placeholder={keyInfo[set_key]?"•••••••••••••":placeholder}
+              value={val} onChange={e=>set(e.target.value)}/>
+            <p className="text-xs mt-1" style={{color:"#475569"}}>{hint}</p>
+          </div>
+        ))}
+
+        {status&&<div className={`rounded-lg px-4 py-2 mb-4 text-sm ${status.type==="ok"?"text-green-300":"text-red-300"}`}
+          style={{background:status.type==="ok"?"#052e16":"#450a0a"}}>{status.msg}</div>}
+
+        <button onClick={save} className="w-full py-2 rounded-lg font-semibold text-sm" style={{background:"#22c55e",color:"#fff"}}>Save Keys</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Nav ── */
+const TABS = ["Upload CV","Job Feed","Tracker","Dashboard","Resume"];
+
+function NavBar({tab,setTab,onSettings}) {
+  return (
+    <nav className="flex items-center px-6 py-3 border-b" style={{background:"#1e293b",borderColor:"#334155"}}>
+      <span className="text-lg font-bold mr-6" style={{color:"#f1f5f9"}}>Job<span style={{color:"#22c55e"}}>Radar</span></span>
+      <div className="flex gap-1 overflow-x-auto">
+        {TABS.map(t=>(
+          <button key={t} onClick={()=>setTab(t)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap"
+            style={tab===t?{background:"#22c55e20",color:"#22c55e"}:{color:"#94a3b8"}}>
+            {t}
+          </button>
+        ))}
+      </div>
+      <button onClick={onSettings} className="ml-auto flex-shrink-0" style={{color:"#64748b"}} title="Settings">
+        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+    </nav>
+  );
+}
+
+/* ── App root ── */
+function App() {
+  const [tab,setTab]           = useState("Upload CV");
+  const [profile,setProfile]   = useState(null);
+  const [jobs,setJobs]         = useState([]);
+  const [showSettings,setShow] = useState(false);
+
+  useEffect(()=>{
+    api.get("/api/profile").then(r=>{if(r.profile)setProfile(r.profile);});
+    api.get("/api/jobs").then(r=>{if(r.jobs)setJobs(r.jobs);});
+  },[]);
+
+  const refreshJobs = async () => {
+    const r = await api.get("/api/jobs");
+    if(r.jobs) setJobs(r.jobs);
+  };
+
+  return (
+    <>
+      <NavBar tab={tab} setTab={setTab} onSettings={()=>setShow(true)}/>
+      <main className="pb-16">
+        {tab==="Upload CV" && <UploadCV    profile={profile} onProfileUpdated={p=>{setProfile(p);}}/>}
+        {tab==="Job Feed"  && <JobFeed     profile={profile} jobs={jobs} onJobsUpdated={j=>{if(j)setJobs(j);else refreshJobs();}}/>}
+        {tab==="Tracker"   && <Tracker     jobs={jobs} onJobsUpdated={refreshJobs}/>}
+        {tab==="Dashboard" && <Dashboard   jobs={jobs}/>}
+        {tab==="Resume"    && <ResumeBuilder profile={profile}/>}
+      </main>
+      {showSettings && <SettingsModal onClose={()=>setShow(false)}/>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
