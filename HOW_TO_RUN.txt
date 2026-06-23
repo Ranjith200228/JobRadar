@@ -1,0 +1,47 @@
+JOBRADAR — SETUP & RUN
+======================
+
+REQUIREMENTS
+  - Python 3.10+  (check: python --version)
+
+STEP 1 — Install dependencies
+  Open a terminal in the JobRadar folder and run:
+
+    pip install -r requirements.txt
+
+STEP 2 — Add your API keys  (two options)
+
+  Option A: via the app UI
+    Skip this step — run the app and click the ⚙ icon top-right.
+    Paste your Anthropic and Apify keys there. They save to a local .env file.
+
+  Option B: manual
+    Copy .env.example → .env and fill in your keys:
+      ANTHROPIC_API_KEY=sk-ant-...
+      APIFY_API_KEY=apify_api_...
+
+STEP 3 — Run the app
+  In the JobRadar folder:
+
+    python app.py
+
+  Then open http://localhost:5000 in your browser.
+
+APIFY ACTORS
+  The app uses two Apify actors. Make sure these are enabled on your account:
+    • curious_coder/multi-job-board-scraper  → LinkedIn, Indeed, Glassdoor, Google Jobs, SimplyHired
+    • bebity/career-site-scraper             → Workday, Greenhouse, Lever, ADP, Ashby, BambooHR, iCIMS
+
+  To find/enable them: go to apify.com → search the Store → click "Try for free".
+  If you want different actors, edit the ACTOR_MULTI_BOARD and ACTOR_ATS constants near the top of app.py.
+
+DATABASE
+  A SQLite file (jobradar.db) is created automatically in the JobRadar folder on first run.
+  To start fresh: delete jobradar.db and restart.
+
+USAGE FLOW
+  1. Upload CV   → drop your PDF — Claude parses it in seconds
+  2. Job Feed    → search for a role & location, pick platforms, click Fetch Jobs
+                   Claude then auto-scores each job against your CV
+  3. Tracker     → drag job cards between Kanban columns as you progress
+  4. Dashboard   → live analytics updated as you move cards
