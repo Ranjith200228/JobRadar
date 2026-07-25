@@ -37,3 +37,7 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Local artifacts
+startup.log
+push_readme.bat

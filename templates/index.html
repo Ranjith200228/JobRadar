@@ -9,65 +9,525 @@
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
   <style>
-    :root{--navy:#0f172a;--navy1:#1e293b;--navy2:#334155;--navy3:#475569;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;}
+    :root{
+      --navy:#060c1a;--navy1:#0d1a38;--navy2:#0a1530;--navy3:#131f45;
+      --green:#5b8dfe;--amber:#f59e0b;--red:#ef4444;--purple:#818cf8;--blue:#93c5fd;
+      --spatial:linear-gradient(135deg,rgba(255,255,255,0.12),rgba(91,141,254,0.08));
+    }
     *{box-sizing:border-box;}
-    body{margin:0;background:var(--navy);color:#f1f5f9;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;}
-    ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:var(--navy1);}::-webkit-scrollbar-thumb{background:var(--navy2);border-radius:3px;}
+    html{scroll-behavior:smooth;}
+    body{
+      margin:0;
+      background:#060c1a;
+      background-image:
+        radial-gradient(ellipse at 15% 20%, rgba(30,80,200,0.09) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 80%, rgba(20,60,160,0.07) 0%, transparent 55%),
+        radial-gradient(ellipse at 50% 50%, rgba(91,141,254,0.04) 0%, transparent 60%);
+      background-attachment:fixed;
+      color:#e8f0ff;
+      font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;
+      min-height:100vh;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    ::-webkit-scrollbar{width:5px;}
+    ::-webkit-scrollbar-track{background:#060c1a;}
+    ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#2d5ac8,#5b8dfe);border-radius:3px;}
+    ::-webkit-scrollbar-thumb:hover{opacity:.8;}
     @keyframes spin{to{transform:rotate(360deg);}}
-    .spinner{display:inline-block;width:18px;height:18px;border:2px solid #ffffff30;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+    .spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,0.08);border-top-color:#5b8dfe;border-radius:50%;animation:spin .7s linear infinite;}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
     .pulse{animation:pulse 1.4s ease-in-out infinite;}
-    .kanban-card{cursor:grab;transition:opacity .15s;}
+    /* Kanban */
+    .kanban-card{cursor:grab;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,opacity .15s ease;}
+    .kanban-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px #00000070,0 0 0 1px rgba(255,255,255,0.05);}
     .kanban-card:active{cursor:grabbing;}
-    .kanban-card.dragging{opacity:.35;}
-    .drag-over{box-shadow:inset 0 0 0 2px var(--green)!important;}
-    .drop-zone{transition:border-color .2s,background .2s;}
-    .drop-zone.over{border-color:var(--green)!important;background:#22c55e12!important;}
+    .kanban-card.dragging{opacity:.18;transform:rotate(3deg) scale(0.95);}
+    .kanban-col{transition:box-shadow .2s,background .2s;}
+    .drag-over{box-shadow:inset 0 0 0 2px var(--green)!important;background:rgba(91,141,254,0.06)!important;}
+    .drop-zone{transition:border-color .25s,background .25s;}
+    .drop-zone.over{border-color:var(--green)!important;background:rgba(91,141,254,0.08)!important;}
+    @keyframes cardDrop{from{transform:translateY(-14px);opacity:.4}to{transform:translateY(0);opacity:1}}
+    .card-dropped{animation:cardDrop .35s cubic-bezier(.34,1.56,.64,1);}
+    @keyframes scoreReveal{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+    .score-reveal{animation:scoreReveal .5s cubic-bezier(.34,1.56,.64,1);}
+    @keyframes streakPop{0%{transform:scale(1)}40%{transform:scale(1.45)}75%{transform:scale(0.93)}100%{transform:scale(1)}}
+    .streak-pop{animation:streakPop .55s ease;}
+    @keyframes badgeEarn{from{transform:scale(0.3) rotate(-20deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+    .badge-earned{animation:badgeEarn .6s cubic-bezier(.34,1.56,.64,1);}
+    @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+    .slide-down{animation:slideDown .3s cubic-bezier(.34,1.56,.64,1);}
+    body.focus-mode nav{opacity:.18;pointer-events:none;transition:opacity .5s;}
+    body.focus-mode nav:hover{opacity:1;pointer-events:auto;}
     textarea,input{outline:none;}
+    /* Glass surface */
+    .glass{
+      background:rgba(10,20,50,0.72);
+      backdrop-filter:blur(24px) saturate(160%);
+      -webkit-backdrop-filter:blur(24px) saturate(160%);
+      border:1px solid rgba(255,255,255,0.09);
+    }
+    /* Gradient text */
+    .grad-green{background:linear-gradient(135deg,#e2e8f0 0%,#5b8dfe 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .grad-blue{background:linear-gradient(135deg,#e2e8f0 0%,#3b82f6 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .grad-purple{background:linear-gradient(135deg,#e2e8f0 0%,#8b5cf6 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .grad-amber{background:linear-gradient(135deg,#e2e8f0 0%,#f59e0b 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .grad-red{background:linear-gradient(135deg,#e2e8f0 0%,#f43f5e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    /* Hero keyframes */
+    @keyframes heroTwinkle{0%,100%{opacity:0.15}50%{opacity:0.9}}
+    @keyframes heroGlow{0%,100%{opacity:0.5}50%{opacity:0.9}}
+    /* Tab enter transition */
+    @keyframes tabEnter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .tab-enter{animation:tabEnter .32s cubic-bezier(.34,1.2,.64,1);}
+    /* Primary button glow */
+    .btn-glow{transition:box-shadow .25s,transform .12s;}
+    .btn-glow:hover:not(:disabled){box-shadow:0 0 24px rgba(91,141,254,0.28),0 4px 16px rgba(0,0,0,0.6);transform:translateY(-1px);}
+    .btn-glow:active:not(:disabled){transform:translateY(0);box-shadow:none;}
+    /* Card hover lift */
+    .card-lift{transition:transform .2s ease,box-shadow .2s ease;}
+    .card-lift:hover{transform:translateY(-2px);box-shadow:0 8px 28px #0000005a;}
+    /* Stat number */
+    .stat-num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
+    /* Radar logo animations */
+    @keyframes radarSweep{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+    @keyframes radarBlip{0%,58%,100%{opacity:0}68%,80%{opacity:1}}
+    @keyframes ringPulse{0%,100%{opacity:0.18}50%{opacity:0.55}}
+    @keyframes signalPulse{0%,100%{box-shadow:0 0 0 0 currentColor}50%{box-shadow:0 0 12px 3px currentColor}}
+    .ring-pulse{animation:ringPulse 2.5s ease-in-out infinite;}
+    .radar-blip{animation:radarBlip 4s ease-in-out infinite;}
+    /* Nav logo hover */
+    .logo-wrap{transition:transform .2s ease;}
+    .logo-wrap:hover{transform:scale(1.04);}
+    /* ── Spatial Depth panels (Apple Vision Pro inspired) ───────── */
+    .panel-glass{
+      background:rgba(10,20,50,0.78);
+      backdrop-filter:blur(40px) saturate(160%);
+      -webkit-backdrop-filter:blur(40px) saturate(160%);
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:20px;
+      box-shadow:
+        /* Stacked card layer B — visible panel behind */
+        0 14px 0 -4px rgba(4,10,30,0.92),
+        /* Stacked card layer C — deepest */
+        0 26px 0 -8px rgba(3,7,22,0.75),
+        /* Ambient depth shadow */
+        0 8px 32px rgba(0,0,0,0.55),
+        0 24px 64px rgba(0,0,0,0.40),
+        /* Glass top-edge highlight */
+        inset 0 1px 0 rgba(255,255,255,0.20),
+        /* Glass bottom-edge depth */
+        inset 0 -1px 0 rgba(0,0,0,0.30);
+    }
+    /* Job card */
+    .job-card-pro{
+      background:rgba(10,20,50,0.72);
+      backdrop-filter:blur(20px);
+      -webkit-backdrop-filter:blur(20px);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:14px;
+      padding:20px;margin-bottom:12px;position:relative;overflow:hidden;
+      transition:transform .2s ease,box-shadow .25s;
+      box-shadow:
+        0 8px 0 -3px rgba(4,10,30,0.90),
+        0 16px 0 -6px rgba(3,7,22,0.70),
+        0 4px 16px rgba(0,0,0,0.45),
+        inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .job-card-pro:hover{
+      transform:translateY(-3px);
+      box-shadow:
+        0 12px 0 -3px rgba(4,10,30,0.92),
+        0 22px 0 -6px rgba(3,7,22,0.72),
+        0 8px 32px rgba(0,0,0,0.60),
+        0 0 0 1px rgba(91,141,254,0.28),
+        inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    /* Premium inputs */
+    .input-pro{
+      background:rgba(6,12,32,0.65)!important;
+      border:1px solid rgba(255,255,255,0.08)!important;
+      color:#e8f0ff!important;
+      border-radius:10px!important;
+      font-family:'Space Grotesk',sans-serif!important;
+      font-size:13px!important;
+      transition:border-color .2s,box-shadow .2s!important;
+      box-shadow:inset 0 2px 6px rgba(0,0,0,0.45),inset 0 1px 2px rgba(0,0,0,0.30)!important;
+    }
+    .input-pro:focus{
+      border-color:rgba(91,141,254,0.55)!important;
+      box-shadow:inset 0 2px 6px rgba(0,0,0,0.45),0 0 0 3px rgba(91,141,254,0.15)!important;
+      outline:none!important;
+    }
+    .input-pro::placeholder{color:rgba(255,255,255,0.18)!important;}
+    /* Premium button */
+    .btn-pro{
+      border-radius:10px!important;
+      font-family:'Space Grotesk',sans-serif!important;
+      font-weight:700!important;
+      letter-spacing:0.03em!important;
+      transition:opacity .2s,transform .12s,box-shadow .2s!important;
+      cursor:pointer;
+    }
+    .btn-pro:hover:not(:disabled){
+      opacity:0.90;
+      transform:translateY(-1px);
+      box-shadow:0 8px 28px rgba(91,141,254,0.30)!important;
+    }
+    .btn-pro:active:not(:disabled){transform:translateY(0)!important;}
+    .btn-pro:disabled{opacity:0.35!important;cursor:not-allowed;}
+    /* Section label */
+    .sec-label{
+      font-size:10px;font-weight:700;
+      letter-spacing:0.15em;text-transform:uppercase;
+      color:rgba(160,196,255,0.50);
+    }
+    /* Hero stat number */
+    .stat-hero{
+      font-size:2.75rem;font-weight:800;
+      letter-spacing:-0.045em;line-height:1;
+      font-variant-numeric:tabular-nums;
+    }
+    /* Doc card */
+    .doc-card-pro{
+      background:rgba(10,20,50,0.78);
+      backdrop-filter:blur(24px);
+      -webkit-backdrop-filter:blur(24px);
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:14px;
+      margin-bottom:16px;
+      overflow:hidden;
+      box-shadow:
+        0 10px 0 -3px rgba(4,10,30,0.90),
+        0 20px 0 -6px rgba(3,7,22,0.70),
+        0 6px 24px rgba(0,0,0,0.50),
+        inset 0 1px 0 rgba(255,255,255,0.16);
+    }
+    /* Copy button */
+    .copy-btn{
+      font-size:11px;padding:3px 10px;border-radius:7px;
+      background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.08);
+      color:#64748b;cursor:pointer;
+      font-family:'Space Grotesk',sans-serif;
+      transition:background .15s,color .15s;
+    }
+    .copy-btn:hover{background:rgba(255,255,255,0.09);color:#94a3b8;}
+    /* Job detail slide-over */
+    @keyframes drawerIn{from{transform:translateX(100%);}to{transform:translateX(0);}}
+    @keyframes backdropIn{from{opacity:0;}to{opacity:1;}}
+    .drawer-backdrop{
+      position:fixed;inset:0;z-index:60;
+      background:rgba(3,7,18,0.62);
+      backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+      animation:backdropIn .25s ease;
+    }
+    .drawer-panel{
+      position:fixed;top:0;right:0;bottom:0;z-index:61;
+      width:min(520px,94vw);
+      background:rgba(8,13,26,0.98);
+      border-left:1px solid rgba(91,141,254,0.16);
+      box-shadow:-28px 0 70px rgba(0,0,0,0.6);
+      animation:drawerIn .32s cubic-bezier(.2,.8,.2,1);
+      overflow-y:auto;
+      display:flex;flex-direction:column;
+    }
+    /* Welcome journey step circles */
+    .journey-step-done{background:linear-gradient(135deg,#1e4fd4,#5b8dfe);box-shadow:0 0 16px rgba(91,141,254,0.35);}
   </style>
 </head>
 <body>
-<div id="root"></div>
+<canvas id="bgCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.35;"></canvas>
+<div id="root" style="position:relative;z-index:1;"></div>
+<script>
+(function(){
+  var cv=document.getElementById("bgCanvas");
+  var ctx=cv.getContext("2d");
+  function resize(){cv.width=window.innerWidth;cv.height=window.innerHeight;}
+  resize();
+  window.addEventListener("resize",resize);
+  var pts=[];
+  for(var i=0;i<80;i++){
+    pts.push({x:Math.random()*cv.width,y:Math.random()*cv.height,
+      vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,
+      r:Math.random()*1.2+.4,op:Math.random()*.4+.1});
+  }
+  function draw(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    pts.forEach(function(p){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=cv.width; if(p.x>cv.width)p.x=0;
+      if(p.y<0)p.y=cv.height; if(p.y>cv.height)p.y=0;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle="rgba(255,255,255,"+p.op+")";
+      ctx.fill();
+    });
+    // draw faint connection lines
+    for(var i=0;i<pts.length;i++){
+      for(var j=i+1;j<pts.length;j++){
+        var dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
+        var dist=Math.sqrt(dx*dx+dy*dy);
+        if(dist<120){
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x,pts[i].y);
+          ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.strokeStyle="rgba(91,141,254,"+(0.07*(1-dist/120))+")";
+          ctx.lineWidth=.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback} = React;
 
 /* ── API ── */
+const _jsonOrErr = r => r.ok ? r.json() : r.json().catch(()=>({error:`HTTP ${r.status}`}));
+const _netErr    = e => ({error: e?.message||"Network error — is the server running?"});
 const api = {
-  get:   url       => fetch(url).then(r=>r.json()),
-  post:  (url,body,isForm) => fetch(url,{method:"POST",...(isForm?{body}:{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}).then(r=>r.json()),
-  patch: (url,body)        => fetch(url,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()),
+  get:   url       => fetch(url).then(_jsonOrErr).catch(_netErr),
+  post:  (url,body,isForm) => fetch(url,{method:"POST",...(isForm?{body}:{headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}).then(_jsonOrErr).catch(_netErr),
+  patch: (url,body)        => fetch(url,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(_jsonOrErr).catch(_netErr),
+  del:   url       => fetch(url,{method:"DELETE"}).then(_jsonOrErr).catch(_netErr),
+};
+
+/* ── Confetti ── */
+window.fireConfetti = function() {
+  const cv = document.createElement("canvas");
+  cv.style.cssText="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;";
+  document.body.appendChild(cv);
+  const ctx = cv.getContext("2d");
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  const colors = ["#22c55e","#3b82f6","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f472b6"];
+  const pieces = Array.from({length:160},()=>({
+    x:Math.random()*cv.width, y:Math.random()*cv.height-cv.height,
+    r:Math.random()*7+3, d:Math.random()*3+1.2,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    tiltAngle:0, tiltSpeed:Math.random()*.1+.04, wobble:Math.random()*Math.PI*2
+  }));
+  let frame=0;
+  const draw=()=>{
+    ctx.clearRect(0,0,cv.width,cv.height);
+    pieces.forEach(p=>{
+      p.tiltAngle+=p.tiltSpeed; p.wobble+=.07;
+      p.y+=p.d+Math.sin(p.wobble)*.8; p.x+=Math.sin(p.tiltAngle)*.6;
+      if(p.y>cv.height){p.y=-10;p.x=Math.random()*cv.width;}
+      ctx.beginPath(); ctx.fillStyle=p.color; ctx.globalAlpha=.88;
+      ctx.ellipse(p.x,p.y,p.r*.5,p.r,p.tiltAngle,0,Math.PI*2); ctx.fill();
+    });
+    frame++;
+    if(frame<220) requestAnimationFrame(draw); else cv.remove();
+  };
+  draw();
 };
 
 /* ── Reusable atoms ── */
 const Spinner = ({size=18}) => <div className="spinner" style={{width:size,height:size}}/>;
 
 const ScoreBadge = ({score,loading}) => {
-  if(loading) return <span className="pulse text-xs px-2 py-0.5 rounded-full bg-gray-600 text-gray-300">Scoring…</span>;
+  if(loading) return (
+    <div className="pulse" style={{width:48,height:48,borderRadius:"50%",flexShrink:0,
+      background:"rgba(255,255,255,0.03)",border:"2.5px solid rgba(255,255,255,0.07)",
+      display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <span style={{fontSize:9,color:"#334155",fontFamily:"'Space Grotesk',sans-serif"}}>…</span>
+    </div>
+  );
   if(score==null) return null;
-  const bg = score>=70?"#22c55e":score>=40?"#f59e0b":"#ef4444";
-  return <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white" style={{background:bg}}>{score}%</span>;
+  const color = score>=80?"#22c55e":score>=65?"#3b82f6":score>=50?"#f59e0b":"#ef4444";
+  const R=19,CIRC=2*Math.PI*R,offset=CIRC*(1-score/100);
+  return (
+    <div style={{position:"relative",width:48,height:48,flexShrink:0}}>
+      <svg width={48} height={48} style={{position:"absolute",top:0,left:0,transform:"rotate(-90deg)"}}>
+        <circle cx={24} cy={24} r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={3.5}/>
+        <circle cx={24} cy={24} r={R} fill="none" stroke={color} strokeWidth={3.5}
+          strokeDasharray={CIRC} strokeDashoffset={offset} strokeLinecap="round"
+          className="score-reveal"/>
+      </svg>
+      <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontSize:13,fontWeight:800,color,letterSpacing:"-0.03em",lineHeight:1,fontFamily:"'Space Grotesk',sans-serif"}}>{score}</span>
+        <span style={{fontSize:7,color:"rgba(255,255,255,0.2)",letterSpacing:"0.06em",fontFamily:"'Space Grotesk',sans-serif"}}>%</span>
+      </div>
+    </div>
+  );
 };
 
 const PlatformTag = ({name}) => (
-  <span className="text-xs px-1.5 py-0.5 rounded" style={{background:"#334155",color:"#94a3b8"}}>{name}</span>
+  <span style={{fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,
+    background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",
+    color:"#475569",letterSpacing:"0.05em",fontFamily:"'Space Grotesk',sans-serif"}}>
+    {name}
+  </span>
 );
 
 const PostedBadge = ({datePosted}) => {
   if(!datePosted) return null;
   const h = Math.round((new Date()-new Date(datePosted))/36e5);
   if(isNaN(h)||h>72) return null;
-  const label = h<1?"Just now":h<24?`🔥 ${h}h ago — apply now!`:`⏱ ${Math.round(h/24)}d ago`;
+  const label = h<1?"Just now":h<24?`${h}h ago — apply now!`:`${Math.round(h/24)}d ago`;
   const bg    = h<24?"#14532d":h<48?"#1c3a5e":"#2d2208";
   const color = h<24?"#4ade80":h<48?"#93c5fd":"#fbbf24";
-  return <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:bg,color}}>{label}</span>;
+  const dot   = h<24?"●":"◎";
+  return (
+    <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:99,
+      display:"inline-flex",alignItems:"center",gap:4,
+      background:`${bg}18`,border:`1px solid ${bg}35`,color,
+      fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.02em"}}>
+      <span style={{width:5,height:5,borderRadius:"50%",background:color,display:"inline-block",flexShrink:0}}/>
+      {label}
+    </span>
+  );
 };
 
-const ErrorBox  = ({msg}) => msg?<div className="rounded-lg px-4 py-3 mb-4 text-sm" style={{background:"#450a0a",color:"#fca5a5"}}>{msg}</div>:null;
-const InfoBox   = ({msg}) => msg?<div className="rounded-xl px-4 py-3 mb-6 text-sm" style={{background:"#1e3a5f",color:"#93c5fd"}}>ℹ {msg}</div>:null;
+const ErrorBox = ({msg}) => msg?(
+  <div style={{borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,
+    background:"rgba(69,10,10,0.7)",border:"1px solid rgba(239,68,68,0.18)",color:"#fca5a5",
+    fontFamily:"'Space Grotesk',sans-serif",lineHeight:1.5}}>
+    {msg}
+  </div>
+):null;
+
+const InfoBox = ({msg}) => msg?(
+  <div style={{borderRadius:12,padding:"12px 16px",marginBottom:20,fontSize:13,
+    background:"rgba(30,58,95,0.7)",border:"1px solid rgba(59,130,246,0.18)",color:"#93c5fd",
+    display:"flex",alignItems:"flex-start",gap:10,fontFamily:"'Space Grotesk',sans-serif",lineHeight:1.6}}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{flexShrink:0,marginTop:1}}>
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <span>{msg}</span>
+  </div>
+):null;
 
 /* ── Upload CV Tab ── */
-function UploadCV({profile,onProfileUpdated}) {
+function CVVersionManager({activeProfile,onActivated}) {
+  const [profiles,setProfiles] = useState([]);
+  const [renaming,setRenaming] = useState(null);
+  const [newName,setNewName]   = useState("");
+
+  useEffect(()=>{
+    api.get("/api/cv-profiles").then(r=>{ if(!r.error) setProfiles(r.profiles||[]); });
+  },[activeProfile]);
+
+  const activate = async (id) => {
+    const r = await api.post(`/api/cv-profiles/${id}/activate`,{});
+    if(!r.error){ onActivated(r.profile); setProfiles(ps=>ps.map(p=>({...p,is_active:p.id===id}))); }
+  };
+
+  const saveRename = async (id) => {
+    await api.post(`/api/cv-profiles/${id}/rename`,{name:newName});
+    setProfiles(ps=>ps.map(p=>p.id===id?{...p,profile_name:newName}:p));
+    setRenaming(null);
+  };
+
+  const deleteProfile = async (id) => {
+    if(!confirm("Delete this CV profile?")) return;
+    await api.del(`/api/cv-profiles/${id}`);
+    setProfiles(ps=>ps.filter(p=>p.id!==id));
+    if(activeProfile?.id===id) onActivated(null);
+  };
+
+  if(profiles.length < 2) return null;
+  return (
+    <div className="panel-glass rounded-xl p-4 mb-5">
+      <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{color:"rgba(160,196,255,0.5)"}}>Saved CV Profiles ({profiles.length})</p>
+      {profiles.map(p=>(
+        <div key={p.id} className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg" style={{background:p.is_active?"rgba(91,141,254,0.08)":"#0f172a",border:`1px solid ${p.is_active?"rgba(91,141,254,0.25)":"#334155"}`}}>
+          {renaming===p.id ? (
+            <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveRename(p.id);if(e.key==="Escape")setRenaming(null);}}
+              className="flex-1 text-sm rounded px-2 py-1" style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}} autoFocus/>
+          ) : (
+            <div className="flex-1">
+              <span className="text-sm font-medium" style={{color:p.is_active?"#a0c4ff":"#f1f5f9"}}>{p.profile_name}</span>
+              {p.is_active && <span className="ml-2 text-xs px-1.5 py-0.5 rounded" style={{background:"rgba(91,141,254,0.15)",color:"#a0c4ff"}}>Active</span>}
+              <div className="text-xs" style={{color:"#475569"}}>{p.years_of_experience} yrs · {new Date(p.created_at).toLocaleDateString()}</div>
+            </div>
+          )}
+          <div className="flex gap-1">
+            {!p.is_active && <button onClick={()=>activate(p.id)} className="text-xs px-2 py-1 rounded" style={{background:"rgba(91,141,254,0.12)",color:"#a0c4ff"}}>Use</button>}
+            <button onClick={()=>{setRenaming(p.id);setNewName(p.profile_name);}} className="text-xs px-2 py-1 rounded" style={{background:"#1e3a5f",color:"#93c5fd"}}>✏</button>
+            <button onClick={()=>deleteProfile(p.id)} className="text-xs px-2 py-1 rounded" style={{background:"#450a0a",color:"#fca5a5"}}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WelcomeJourney({profile,jobs,onNavigate}) {
+  let applied = false;
+  try{ applied = !!sessionStorage.getItem("jrApplied"); }catch{}
+  const steps = [
+    {n:1,title:"Upload your resume",desc:"AI parses your skills & experience instantly",done:!!profile,tab:"Upload CV"},
+    {n:2,title:"Find matching jobs",desc:"Live listings scored against your resume",done:(jobs||[]).length>0,tab:"Job Feed"},
+    {n:3,title:"Track applications",desc:"Kanban board, streaks & weekly insights",done:applied,tab:"Tracker"},
+  ];
+  if(steps.every(s=>s.done)) return null;
+  const current = steps.find(s=>!s.done);
+  const doneCount = steps.filter(s=>s.done).length;
+  return (
+    <div className="panel-glass tab-enter" style={{padding:"26px 28px",marginBottom:24}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <div>
+          <p className="sec-label" style={{marginBottom:5}}>Welcome to JobRadar</p>
+          <p style={{fontSize:19,fontWeight:800,letterSpacing:"-0.02em",margin:0,
+            background:"linear-gradient(135deg,#fff 30%,#5b8dfe 100%)",
+            WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            Three steps to your dream job
+          </p>
+        </div>
+        <span style={{fontSize:11,fontWeight:700,color:"#93c5fd",background:"rgba(91,141,254,0.12)",
+          border:"1px solid rgba(91,141,254,0.3)",padding:"4px 12px",borderRadius:99,
+          fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.05em"}}>
+          {doneCount} / 3 done
+        </span>
+      </div>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+        {steps.map(s=>{
+          const isCurrent = current && current.n===s.n;
+          return (
+            <div key={s.n} style={{flex:"1 1 180px",padding:"16px 18px",borderRadius:13,
+              background:isCurrent?"rgba(91,141,254,0.07)":"rgba(255,255,255,0.02)",
+              border:`1px solid ${isCurrent?"rgba(91,141,254,0.35)":"rgba(255,255,255,0.06)"}`,
+              transition:"all .2s"}}>
+              <div className={s.done?"journey-step-done":""}
+                style={{width:30,height:30,borderRadius:"50%",display:"flex",alignItems:"center",
+                  justifyContent:"center",marginBottom:12,fontSize:13,fontWeight:800,
+                  fontFamily:"'Space Grotesk',sans-serif",
+                  ...(s.done?{color:"#fff"}:{background:"rgba(255,255,255,0.05)",
+                    border:"1.5px solid rgba(255,255,255,0.14)",color:"#64748b"})}}>
+                {s.done
+                  ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  : s.n}
+              </div>
+              <p style={{fontSize:13.5,fontWeight:700,color:s.done?"#64748b":"#e2e8f0",marginBottom:4,
+                fontFamily:"'Space Grotesk',sans-serif",
+                textDecoration:s.done?"line-through":"none"}}>{s.title}</p>
+              <p style={{fontSize:11.5,color:"#475569",lineHeight:1.55,margin:0}}>{s.desc}</p>
+              {isCurrent && (
+                <button onClick={()=>onNavigate&&onNavigate(s.tab)}
+                  className="btn-pro"
+                  style={{marginTop:12,background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+                    color:"#fff",border:"none",fontSize:11.5,fontWeight:700,
+                    padding:"6px 14px",letterSpacing:"0.04em"}}>
+                  {s.n===1?"Start here →":"Continue →"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UploadCV({profile,onProfileUpdated,jobs,onNavigate}) {
   const [mode,setMode]     = useState("upload"); // "upload"|"paste"
   const [cvText,setCvText] = useState("");
   const [loading,setLoading] = useState(false);
@@ -96,49 +556,73 @@ function UploadCV({profile,onProfileUpdated}) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto pt-10 px-4">
-      <h2 className="text-2xl font-bold mb-1">Upload Your CV</h2>
-      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>Claude parses every section — experience, projects, certifications — to power ATS scoring and resume generation.</p>
+    <div className="tab-enter">
+    <SectionHero tab="Upload CV"/>
+    <div className="max-w-2xl mx-auto pt-8 px-4">
+
+      <WelcomeJourney profile={profile} jobs={jobs} onNavigate={onNavigate}/>
 
       {/* Mode toggle */}
       <div className="flex gap-2 mb-5">
         {["upload","paste"].map(m=>(
           <button key={m} onClick={()=>setMode(m)}
             className="px-4 py-1.5 rounded-lg text-sm font-medium"
-            style={mode===m?{background:"#22c55e20",color:"#22c55e"}:{color:"#64748b"}}>
-            {m==="upload"?"📄 Upload PDF":"✏ Paste Text"}
+            style={mode===m?{background:"rgba(91,141,254,0.12)",color:"#a0c4ff"}:{color:"#4a3060"}}>
+            {m==="upload"
+              ? <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",marginRight:4,verticalAlign:"middle"}}><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>Upload PDF</>
+              : <>✏ Paste Text</>
+            }
           </button>
         ))}
       </div>
 
       {mode==="upload" ? (
-        <div className={`drop-zone border-2 border-dashed rounded-xl p-12 text-center mb-5 cursor-pointer ${drag?"over":""}`}
-          style={{borderColor:"#334155",background:"#1e293b"}}
+        <div className={`drop-zone panel-glass mb-5 cursor-pointer ${drag?"over":""}`}
+          style={{
+            padding:"48px 32px",textAlign:"center",position:"relative",overflow:"hidden",
+            borderColor: drag?"#5b8dfe":"transparent",
+            boxShadow: drag?"0 0 0 2px #5b8dfe, 0 0 48px rgba(91,141,254,0.15)":"0 0 0 1.5px rgba(91,141,254,0.18)",
+            transition:"box-shadow .25s,border-color .25s"
+          }}
           onDragOver={e=>{e.preventDefault();setDrag(true);}}
           onDragLeave={()=>setDrag(false)}
           onDrop={e=>{e.preventDefault();setDrag(false);uploadFile(e.dataTransfer.files[0]);}}
           onClick={()=>inputRef.current.click()}>
+          {/* Subtle grid background */}
+          <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 50% 0%, rgba(91,141,254,0.07) 0%, transparent 70%)",pointerEvents:"none"}}/>
           <input ref={inputRef} type="file" accept=".pdf" className="hidden" onChange={e=>uploadFile(e.target.files[0])}/>
           {loading
-            ? <div className="flex flex-col items-center gap-3"><Spinner size={32}/><p style={{color:"#94a3b8"}}>Claude is parsing your CV…</p></div>
+            ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+                <div style={{width:56,height:56,borderRadius:"50%",border:"2px solid rgba(91,141,254,0.35)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Spinner size={24}/>
+                </div>
+                <div>
+                  <p style={{fontWeight:600,color:"#f1f5f9",marginBottom:4,fontFamily:"'Space Grotesk',sans-serif"}}>Claude is parsing your CV…</p>
+                  <p style={{fontSize:12,color:"#334155"}}>Extracting skills, experience &amp; insights</p>
+                </div>
+              </div>
             : <>
-                <svg className="mx-auto mb-3" width="40" height="40" fill="none" stroke="#475569" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
-                </svg>
-                <p className="font-medium">Drag & drop your PDF, or <span style={{color:"#22c55e"}}>click to browse</span></p>
-                <p className="text-xs mt-1" style={{color:"#64748b"}}>PDF only · max 16 MB</p>
+                <div style={{width:64,height:64,borderRadius:"50%",background:"rgba(91,141,254,0.08)",border:"1.5px solid rgba(91,141,254,0.25)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+                  <svg width="28" height="28" fill="none" stroke="#5b8dfe" strokeWidth="1.6" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+                  </svg>
+                </div>
+                <p style={{fontWeight:700,fontSize:"1rem",color:"#f0e8ff",marginBottom:6,fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.01em"}}>
+                  Drop your CV here, or <span style={{color:"#a0c4ff",borderBottom:"1px solid rgba(91,141,254,0.38)"}}>click to browse</span>
+                </p>
+                <p style={{fontSize:12,color:"#334155",fontFamily:"'Space Grotesk',sans-serif"}}>PDF only · max 16 MB · Claude will parse it instantly</p>
               </>}
         </div>
       ) : (
         <div className="mb-5">
           <textarea
-            className="w-full rounded-xl px-4 py-3 text-sm resize-none"
-            style={{background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",minHeight:260}}
+            className="w-full input-pro rounded-xl px-4 py-3 text-sm resize-none"
+            style={{minHeight:260,lineHeight:1.7}}
             placeholder="Paste your full CV text here — include all experience, projects, education, certifications…"
             value={cvText} onChange={e=>setCvText(e.target.value)}/>
           <button onClick={pasteCV} disabled={loading}
-            className="w-full mt-3 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
-            style={{background:loading?"#334155":"#22c55e",color:"#fff"}}>
+            className="btn-pro w-full mt-3 py-2.5 text-sm flex items-center justify-center gap-2"
+            style={{background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:"#fff",border:loading?"1px solid rgba(255,255,255,0.06)":"none",fontSize:13}}>
             {loading?<><Spinner/> Parsing with Claude…</>:"Parse CV"}
           </button>
         </div>
@@ -146,10 +630,13 @@ function UploadCV({profile,onProfileUpdated}) {
 
       <ErrorBox msg={error}/>
 
+      <CVVersionManager activeProfile={profile} onActivated={p=>{ if(p) onProfileUpdated(p); }}/>
+
       {profile && <>
         <ProfileCard profile={profile} onReupload={()=>inputRef.current?.click()}/>
         <LinksEditor profile={profile} onProfileUpdated={onProfileUpdated}/>
       </>}
+    </div>
     </div>
   );
 }
@@ -160,39 +647,91 @@ function ProfileCard({profile,onReupload}) {
   const edu    = profile.education||[];
   const projs  = profile.projects||[];
   return (
-    <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg" style={{background:"#22c55e",color:"#fff"}}>{(profile.full_name||"?")[0]}</div>
-        <div className="flex-1">
-          <p className="font-bold text-lg leading-tight">{profile.full_name}</p>
-          <p className="text-sm" style={{color:"#22c55e"}}>{profile.current_job_title}</p>
+    <div className="panel-glass" style={{padding:24,position:"relative",overflow:"hidden"}}>
+      {/* Top gradient accent */}
+      <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+        {/* Avatar with ring */}
+        <div style={{position:"relative",flexShrink:0}}>
+          <div style={{
+            width:52,height:52,borderRadius:"50%",
+            background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:"1.3rem",fontWeight:800,color:"#fff",
+            fontFamily:"'Space Grotesk',sans-serif",
+            boxShadow:"0 0 0 3px rgba(91,141,254,0.25),0 0 20px rgba(91,141,254,0.18)"
+          }}>
+            {(profile.full_name||"?")[0]}
+          </div>
+          <div style={{position:"absolute",bottom:0,right:-2,width:14,height:14,borderRadius:"50%",background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",border:"2px solid #060c1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <svg width="7" height="7" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
         </div>
-        <span className="text-xs px-2 py-1 rounded-full" style={{background:"#22c55e20",color:"#22c55e"}}>{profile.years_of_experience} yrs exp</span>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontWeight:800,fontSize:"1.05rem",letterSpacing:"-0.02em",color:"#f1f5f9",lineHeight:1.2,fontFamily:"'Space Grotesk',sans-serif",marginBottom:3}}>{profile.full_name}</p>
+          <p style={{fontSize:13,color:"#a0c4ff",fontWeight:500,fontFamily:"'Space Grotesk',sans-serif"}}>{profile.current_job_title}</p>
+        </div>
+        <div style={{textAlign:"center",flexShrink:0}}>
+          <div style={{fontSize:"1.4rem",fontWeight:800,color:"#f1f5f9",lineHeight:1,fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.03em"}}>{profile.years_of_experience}</div>
+          <div style={{fontSize:10,color:"#334155",textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'Space Grotesk',sans-serif"}}>yrs exp</div>
+        </div>
       </div>
 
-      <p className="text-sm mb-4 leading-relaxed" style={{color:"#cbd5e1"}}>{profile.professional_summary}</p>
+      {/* Summary */}
+      <p style={{fontSize:13,lineHeight:1.8,color:"rgba(160,196,255,0.65)",marginBottom:20,borderLeft:"2px solid rgba(91,141,254,0.35)",paddingLeft:12,fontFamily:"'Space Grotesk',sans-serif"}}>{profile.professional_summary}</p>
 
-      {skills.length>0 && <>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Skills</p>
-        <div className="flex flex-wrap gap-1.5 mb-4">{skills.map(s=><span key={s} className="text-xs px-2 py-0.5 rounded" style={{background:"#0f172a",color:"#94a3b8"}}>{s}</span>)}</div>
-      </>}
+      {skills.length>0 && <div style={{marginBottom:18}}>
+        <p className="sec-label" style={{marginBottom:10}}>Technical Skills</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {skills.map(s=>(
+            <span key={s} style={{fontSize:11,fontWeight:500,padding:"3px 10px",borderRadius:6,background:"rgba(91,141,254,0.09)",color:"#a0c4ff",border:"1px solid rgba(91,141,254,0.18)",fontFamily:"'Space Grotesk',sans-serif"}}>{s}</span>
+          ))}
+        </div>
+      </div>}
 
-      {certs.length>0 && <>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Certifications</p>
-        <div className="mb-4">{certs.map((c,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {c}</p>)}</div>
-      </>}
+      {certs.length>0 && <div style={{marginBottom:18}}>
+        <p className="sec-label" style={{marginBottom:8}}>Certifications</p>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {certs.map((c,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#94a3b8",fontFamily:"'Space Grotesk',sans-serif"}}>
+              <span style={{width:4,height:4,borderRadius:"50%",background:"#3b82f6",flexShrink:0,display:"inline-block"}}/>
+              {c}
+            </div>
+          ))}
+        </div>
+      </div>}
 
-      {edu.length>0 && <>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Education</p>
-        <div className="mb-4">{edu.map((e,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {typeof e==="string"?e:JSON.stringify(e)}</p>)}</div>
-      </>}
+      {edu.length>0 && <div style={{marginBottom:18}}>
+        <p className="sec-label" style={{marginBottom:8}}>Education</p>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {edu.map((e,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#94a3b8",fontFamily:"'Space Grotesk',sans-serif"}}>
+              <span style={{width:4,height:4,borderRadius:"50%",background:"#8b5cf6",flexShrink:0,display:"inline-block"}}/>
+              {typeof e==="string"?e:JSON.stringify(e)}
+            </div>
+          ))}
+        </div>
+      </div>}
 
-      {projs.length>0 && <>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Projects ({projs.length})</p>
-        <div className="mb-3">{projs.map((p,i)=><p key={i} className="text-xs" style={{color:"#94a3b8"}}>• {p.name}</p>)}</div>
-      </>}
+      {projs.length>0 && <div style={{marginBottom:16}}>
+        <p className="sec-label" style={{marginBottom:8}}>Projects <span style={{color:"#a0c4ff",fontVariantNumeric:"tabular-nums"}}>({projs.length})</span></p>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {projs.map((p,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#94a3b8",fontFamily:"'Space Grotesk',sans-serif"}}>
+              <span style={{width:4,height:4,borderRadius:"50%",background:"#f59e0b",flexShrink:0,display:"inline-block"}}/>
+              {p.name}
+            </div>
+          ))}
+        </div>
+      </div>}
 
-      <button onClick={onReupload} className="text-xs underline mt-1" style={{color:"#64748b"}}>Re-upload a different CV</button>
+      <button onClick={onReupload} style={{fontSize:11,color:"#334155",fontFamily:"'Space Grotesk',sans-serif",background:"none",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8,padding:"5px 12px",cursor:"pointer",marginTop:4,transition:"color .15s,border-color .15s"}}
+        onMouseOver={e=>{e.target.style.color="#64748b";e.target.style.borderColor="rgba(255,255,255,0.12)"}}
+        onMouseOut={e=>{e.target.style.color="#334155";e.target.style.borderColor="rgba(255,255,255,0.06)"}}>
+        Re-upload CV
+      </button>
     </div>
   );
 }
@@ -217,34 +756,37 @@ function LinksEditor({profile, onProfileUpdated}) {
   };
 
   const fields = [
-    {key:"contact_email", label:"Email",     placeholder:"ranjithmaddirala24@gmail.com", icon:"✉"},
-    {key:"phone",         label:"Phone",     placeholder:"+1 (555) 000-0000",            icon:"📞"},
-    {key:"location_text", label:"Location",  placeholder:"Boca Raton, FL",               icon:"📍"},
-    {key:"linkedin_url",  label:"LinkedIn",  placeholder:"https://linkedin.com/in/yourname", icon:"🔗"},
-    {key:"github_url",    label:"GitHub",    placeholder:"https://github.com/yourname",  icon:"💻"},
-    {key:"portfolio_url", label:"Portfolio", placeholder:"https://yourportfolio.com",    icon:"🌐"},
+    {key:"contact_email", label:"Email",     placeholder:"ranjithmaddirala24@gmail.com", icon:"@"},
+    {key:"phone",         label:"Phone",     placeholder:"+1 (555) 000-0000",            icon:"#"},
+    {key:"location_text", label:"Location",  placeholder:"Boca Raton, FL",               icon:"◎"},
+    {key:"linkedin_url",  label:"LinkedIn",  placeholder:"https://linkedin.com/in/yourname", icon:"in"},
+    {key:"github_url",    label:"GitHub",    placeholder:"https://github.com/yourname",  icon:"gh"},
+    {key:"portfolio_url", label:"Portfolio", placeholder:"https://yourportfolio.com",    icon:"↗"},
   ];
 
   return (
-    <div className="rounded-xl p-5 mt-4" style={{background:"#1e293b"}}>
-      <div className="flex items-center justify-between mb-4">
+    <div className="panel-glass" style={{padding:20,marginTop:16,position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
         <div>
-          <p className="font-semibold text-sm">Contact & Profile Links</p>
-          <p className="text-xs mt-0.5" style={{color:"#64748b"}}>These appear as clickable links in your resume PDF header.</p>
+          <p style={{fontWeight:700,fontSize:14,color:"#f1f5f9",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.01em"}}>Contact & Profile Links</p>
+          <p style={{fontSize:11,color:"#334155",marginTop:3,fontFamily:"'Space Grotesk',sans-serif"}}>These appear as clickable links in your resume PDF header.</p>
         </div>
-        <button onClick={save} disabled={saving}
-          className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
-          style={{background:saved?"#052e16":saving?"#334155":"#22c55e",color:saved?"#4ade80":"#fff"}}>
+        <button onClick={save} disabled={saving} className="btn-pro"
+          style={{fontSize:11,padding:"6px 14px",background:saved?"rgba(91,141,254,0.12)":saving?"rgba(255,255,255,0.04)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+            color:saved?"#a0c4ff":saving?"#475569":"#fff",border:saved?"1px solid rgba(91,141,254,0.28)":saving?"1px solid rgba(255,255,255,0.06)":"none"}}>
           {saved?"✓ Saved":saving?"Saving…":"Save Links"}
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {fields.map(({key,label,placeholder,icon})=>(
           <div key={key}>
-            <label className="text-xs mb-1 block" style={{color:"#64748b"}}>{icon} {label}</label>
+            <label style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"#334155",fontFamily:"'Space Grotesk',sans-serif",display:"block",marginBottom:5}}>
+              {icon} {label}
+            </label>
             <input
-              className="w-full rounded-lg px-3 py-2 text-xs"
-              style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
+              className="input-pro w-full rounded-lg px-3 py-2"
+              style={{fontSize:12}}
               placeholder={placeholder}
               value={links[key]}
               onChange={e=>setLinks(prev=>({...prev,[key]:e.target.value}))}/>
@@ -267,33 +809,114 @@ const ALL_PLATFORMS = [
   {name:"Lever",type:"via"},
 ];
 
-function JobCard({job,onApply,scoring}) {
-  const [expanded,setExpanded] = useState(false);
+function JobDrawer({job,onClose,onApply}) {
+  useEffect(()=>{
+    const h = e=>{ if(e.key==="Escape") onClose(); };
+    window.addEventListener("keydown",h);
+    document.body.style.overflow = "hidden";
+    return ()=>{ window.removeEventListener("keydown",h); document.body.style.overflow = ""; };
+  },[]);
+  if(!job) return null;
+  const hasDesc = job.job_description && job.job_description.trim() && job.job_description!=="No description available.";
   return (
-    <div className="rounded-xl p-5 mb-3" style={{background:"#1e293b"}}>
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold leading-snug truncate">{job.job_title}</p>
-          <p className="text-sm mt-0.5" style={{color:"#94a3b8"}}>{job.company_name}{job.location?` · ${job.location}`:""}</p>
+    <>
+      <div className="drawer-backdrop" onClick={onClose}/>
+      <div className="drawer-panel">
+        {/* Header */}
+        <div style={{padding:"26px 28px 20px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:14,marginBottom:14}}>
+            <ScoreBadge score={job.match_score}/>
+            <button onClick={onClose} title="Close (Esc)"
+              style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:9,color:"#94a3b8",width:32,height:32,cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
+          </div>
+          <h2 style={{fontSize:"1.35rem",fontWeight:800,lineHeight:1.25,color:"#f1f5f9",
+            letterSpacing:"-0.02em",marginBottom:8,fontFamily:"'Space Grotesk',sans-serif"}}>
+            {job.job_title}
+          </h2>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <span style={{fontSize:14,fontWeight:600,color:"#94a3b8"}}>{job.company_name}</span>
+            {job.location&&<><span style={{color:"#334155"}}>·</span>
+              <span style={{fontSize:13,color:"#64748b"}}>{job.location}</span></>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <PlatformTag name={job.platform_name}/>
+            <PostedBadge datePosted={job.date_posted}/>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Description */}
+        <div style={{padding:"22px 28px",flex:1}}>
+          <p className="sec-label" style={{marginBottom:12}}>Job description</p>
+          {hasDesc
+            ? <p style={{fontSize:13.5,color:"#94a3b8",lineHeight:1.85,whiteSpace:"pre-wrap",
+                fontFamily:"'Space Grotesk',sans-serif"}}>{job.job_description}</p>
+            : <p style={{fontSize:13,color:"#475569",fontStyle:"italic"}}>Full description available on the job posting — click Apply to view it.</p>}
+        </div>
+        {/* Sticky Apply */}
+        <div style={{position:"sticky",bottom:0,padding:"16px 28px 22px",
+          background:"linear-gradient(to top,rgba(8,13,26,1) 65%,transparent)"}}>
+          <button onClick={()=>{onApply(job);onClose();}}
+            className="btn-pro w-full py-3"
+            style={{background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:"#fff",border:"none",
+              fontSize:14,fontWeight:800,letterSpacing:"0.04em",
+              boxShadow:"0 8px 24px rgba(30,79,212,0.35)"}}>
+            Apply on {job.platform_name||"job board"} →
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function JobCard({job,onApply,scoring,onOpen}) {
+  const score = job.match_score;
+  const accentColor = score==null?"#22c55e":score>=80?"#22c55e":score>=65?"#3b82f6":score>=50?"#f59e0b":"#ef4444";
+  const hasDesc = job.job_description && job.job_description.trim() && job.job_description!=="No description available.";
+  return (
+    <div className="job-card-pro" style={{borderLeft:`3px solid ${accentColor}45`,cursor:"pointer"}}
+      onClick={()=>onOpen&&onOpen(job)}>
+      {/* Top row */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:12}}>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:"1.05rem",fontWeight:700,lineHeight:1.25,color:"#f1f5f9",
+            letterSpacing:"-0.015em",marginBottom:5,
+            fontFamily:"'Space Grotesk',sans-serif"}}>
+            {job.job_title}
+          </p>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,fontWeight:500,color:"#475569"}}>{job.company_name}</span>
+            {job.location&&<>
+              <span style={{fontSize:11,color:"#1e293b"}}>·</span>
+              <span style={{fontSize:12,color:"#334155"}}>{job.location}</span>
+            </>}
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
           <PlatformTag name={job.platform_name}/>
           <ScoreBadge score={job.match_score} loading={scoring&&job.match_score==null}/>
         </div>
       </div>
 
-      <p className="text-sm mb-3" style={{color:"#cbd5e1",display:expanded?"block":"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:expanded?"visible":"hidden",lineHeight:1.6}}>
-        {job.job_description||"No description available."}
-      </p>
+      {/* Description preview — 3 lines */}
+      {hasDesc && (
+        <p style={{fontSize:13,color:"#4b5563",lineHeight:1.75,marginBottom:14,
+          display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",
+          fontFamily:"'Space Grotesk',sans-serif",fontWeight:400}}>
+          {job.job_description}
+        </p>
+      )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={()=>setExpanded(x=>!x)} className="text-xs" style={{color:"#64748b"}}>
-          {expanded?"▲ Hide":"▼ View full description"}
-        </button>
+      {/* Bottom row */}
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:11,fontWeight:600,color:"#334155",letterSpacing:"0.03em",
+          fontFamily:"'Space Grotesk',sans-serif"}}>
+          View details →
+        </span>
         <PostedBadge datePosted={job.date_posted}/>
-        <button onClick={()=>onApply(job)}
-          className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg"
-          style={{background:"#22c55e",color:"#fff"}}>
+        <button onClick={e=>{e.stopPropagation();onApply(job);}}
+          className="btn-pro ml-auto"
+          style={{background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:"#fff",border:"none",
+            fontSize:12,fontWeight:700,padding:"7px 18px",letterSpacing:"0.04em"}}>
           Apply →
         </button>
       </div>
@@ -302,37 +925,70 @@ function JobCard({job,onApply,scoring}) {
 }
 
 function JobFeed({profile,jobs,onJobsUpdated}) {
-  const [query,setQuery]         = useState("");
-  const [location,setLocation]   = useState("");
+  const [query,setQuery]         = useState(()=>profile?.current_job_title||"");
+  const [location,setLocation]   = useState(()=>profile?.location_text||"");
   const [platforms,setPlatforms] = useState(["LinkedIn","Indeed","Google Jobs","ZipRecruiter","Glassdoor","Wellfound","Dice"]);
+  const [hours,setHours]         = useState(48);   // strict freshness: 6 | 24 | 48
+
+  // If profile loads after mount (e.g. slow API response), fill in the empty fields
+  useEffect(()=>{
+    if(profile?.current_job_title && !query) setQuery(profile.current_job_title);
+    if(profile?.location_text && !location) setLocation(profile.location_text);
+  },[profile?.id]);
   const [showPlat,setShowPlat]   = useState(false);
   const [fetching,setFetching]   = useState(false);
   const [scoring,setScoring]     = useState(false);
   const [error,setError]         = useState("");
   const [localJobs,setLocalJobs] = useState(jobs);
+  const [elapsed,setElapsed]     = useState(0);
+
+  // Live elapsed-seconds counter while scraping
+  useEffect(()=>{
+    if(!fetching){ setElapsed(0); return; }
+    const t = setInterval(()=>setElapsed(e=>e+1),1000);
+    return ()=>clearInterval(t);
+  },[fetching]);
 
   useEffect(()=>setLocalJobs(jobs),[jobs]);
 
   const toggle = p => setPlatforms(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]);
 
+  const [filteredOut,setFilteredOut] = useState(0);
+  const [threshold,setThreshold]     = useState(75);
+  const [notice,setNotice]           = useState("");
+
   const doFetch = async () => {
     if(!query.trim()){setError("Enter a job title.");return;}
-    setFetching(true);setError("");
-    const res = await api.post("/api/jobs/fetch",{query,location,platforms});
+    setFetching(true);setError("");setFilteredOut(0);setNotice("");
+    const res = await api.post("/api/jobs/fetch",{query,location,platforms,hours});
     setFetching(false);
     if(res.error){setError(res.error);return;}
+    if(res.note) setNotice(res.note);
     const newJobs = res.jobs||[];
     setLocalJobs(newJobs);onJobsUpdated(newJobs);
     if(profile&&newJobs.length>0){
       setScoring(true);
-      const scored = await api.post("/api/jobs/score-all",{});
+      const scored = await api.post("/api/jobs/score-all",{query});
       setScoring(false);
-      if(!scored.error){setLocalJobs(scored.jobs);onJobsUpdated(scored.jobs);}
+      if(scored.error){
+        setError(scored.error);
+      }else{
+        setLocalJobs(scored.jobs||[]);
+        onJobsUpdated(scored.jobs||[]);
+        setThreshold(scored.threshold||75);
+        if(scored.filtered_out>0) setFilteredOut(scored.filtered_out);
+        if((scored.jobs||[]).length===0){
+          setError(`No relevant jobs found for "${query}"${location?" in "+location:""} in this time window. Try the 48-hour filter, broader keywords, or a different location.`);
+        }
+      }
     }
   };
 
+  const [drawerJob,setDrawerJob] = useState(null);
+
   const doApply = async job => {
     if(job.source_url) window.open(job.source_url,"_blank");
+    try{ sessionStorage.setItem("jrApplied","1"); }catch{}
     const res = await api.post(`/api/jobs/${job.id}/apply`,{});
     if(!res.error){
       const updated = localJobs.map(j=>j.id===job.id?res.job:j);
@@ -343,68 +999,129 @@ function JobFeed({profile,jobs,onJobsUpdated}) {
   const sorted = [...localJobs].sort((a,b)=>(b.match_score||0)-(a.match_score||0));
 
   return (
-    <div className="max-w-3xl mx-auto pt-10 px-4">
-      <h2 className="text-2xl font-bold mb-1">Job Feed</h2>
-      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>Fetches jobs posted in the <strong style={{color:"#22c55e"}}>last 72 hours only</strong> — fresh every search.</p>
+    <div className="tab-enter">
+    <SectionHero tab="Job Feed"/>
+    <div className="max-w-3xl mx-auto pt-8 px-4">
 
       {!profile && <InfoBox msg="Upload your CV first so jobs can be scored against your profile."/>}
 
-      <div className="rounded-xl p-4 mb-5" style={{background:"#1e293b"}}>
-        <div className="flex gap-3 mb-3">
-          <input className="flex-1 rounded-lg px-3 py-2 text-sm" style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
-            placeholder="Job title e.g. Machine Learning Engineer"
+      {/* Search panel */}
+      <div className="panel-glass p-5 mb-5">
+        <p className="sec-label mb-3">Search</p>
+        <div style={{display:"flex",gap:10,marginBottom:8}}>
+          <input className="input-pro flex-1 px-4 py-2.5"
+            placeholder="Give your desired job title — let's find your dream job ✨"
             value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doFetch()}/>
-          <input className="w-44 rounded-lg px-3 py-2 text-sm" style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9"}}
-            placeholder="Location (city, state)"
-            value={location} onChange={e=>setLocation(e.target.value)}/>
+          <input className="input-pro px-4 py-2.5" style={{width:200}}
+            placeholder="City, Country or Remote"
+            value={location} onChange={e=>setLocation(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doFetch()}/>
         </div>
 
-        <button onClick={()=>setShowPlat(x=>!x)} className="text-xs mb-2 flex items-center gap-1" style={{color:"#94a3b8"}}>
-          Platforms ({platforms.length}/{ALL_PLATFORMS.length}) {showPlat?"▲":"▼"}
+        {/* Location quick-chips */}
+        <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+          {["Remote","New York, USA","London, UK","Hyderabad, India","Toronto, Canada","Sydney, Australia","Singapore","Dubai, UAE"].map(loc=>(
+            <button key={loc} onClick={()=>setLocation(loc)}
+              style={{fontSize:10,fontWeight:600,padding:"2px 9px",borderRadius:99,cursor:"pointer",
+                fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.04em",
+                background:location===loc?"rgba(91,141,254,0.15)":"rgba(255,255,255,0.03)",
+                border:`1px solid ${location===loc?"rgba(91,141,254,0.4)":"rgba(255,255,255,0.07)"}`,
+                color:location===loc?"#93c5fd":"#475569",transition:"all .15s"}}>
+              {loc}
+            </button>
+          ))}
+        </div>
+
+        {/* Freshness filter — strict: only jobs posted within this window */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,fontWeight:600,color:"#334155",letterSpacing:"0.05em",
+            fontFamily:"'Space Grotesk',sans-serif"}}>POSTED WITHIN</span>
+          {[{v:6,label:"Last 6 hours"},{v:24,label:"Last 24 hours"},{v:48,label:"Last 48 hours"}].map(({v,label})=>(
+            <button key={v} onClick={()=>setHours(v)}
+              style={{fontSize:11,fontWeight:700,padding:"4px 14px",borderRadius:99,cursor:"pointer",
+                fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.03em",
+                background:hours===v?"linear-gradient(135deg,rgba(30,79,212,0.35),rgba(91,141,254,0.25))":"rgba(255,255,255,0.03)",
+                border:`1px solid ${hours===v?"rgba(91,141,254,0.55)":"rgba(255,255,255,0.08)"}`,
+                color:hours===v?"#c7dbff":"#475569",
+                boxShadow:hours===v?"0 0 12px rgba(91,141,254,0.15)":"none",
+                transition:"all .18s"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={()=>setShowPlat(x=>!x)}
+          style={{fontSize:11,fontWeight:600,color:"#334155",background:"none",border:"none",
+            cursor:"pointer",display:"flex",alignItems:"center",gap:4,marginBottom:8,
+            letterSpacing:"0.05em",fontFamily:"'Space Grotesk',sans-serif"}}>
+          PLATFORMS ({platforms.length}/{ALL_PLATFORMS.length}) {showPlat?"▲":"▼"}
+          {platforms.length<3 && <span style={{color:"#f59e0b",marginLeft:8,fontWeight:600,textTransform:"none",letterSpacing:0}}>Tip: select more boards for better results</span>}
         </button>
 
         {showPlat && (
-          <div className="mb-3">
-            <div className="flex flex-wrap gap-1.5 mb-1">
-              {ALL_PLATFORMS.map(({name,type})=>{
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
+              {ALL_PLATFORMS.map(({name})=>{
                 const active = platforms.includes(name);
-                const ac = type==="direct"?"#22c55e":"#f59e0b";
                 return (
-                  <button key={name} onClick={()=>toggle(name)} title={type==="direct"?"Direct scrape":"Via Google/Indeed"}
-                    className="text-xs px-2 py-1 rounded-full border"
-                    style={active?{background:ac,borderColor:ac,color:"#fff"}:{background:"transparent",borderColor:"#334155",color:"#94a3b8"}}>
+                  <button key={name} onClick={()=>toggle(name)}
+                    style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:99,cursor:"pointer",
+                      fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.03em",
+                      background:active?"rgba(91,141,254,0.12)":"transparent",
+                      border:`1px solid ${active?"rgba(91,141,254,0.5)":"rgba(255,255,255,0.07)"}`,
+                      color:active?"#93c5fd":"#334155",transition:"all .15s"}}>
                     {name}
                   </button>
                 );
               })}
             </div>
-            <p className="text-xs" style={{color:"#475569"}}>Green = direct scrape · Amber = searched via Google/Indeed</p>
           </div>
         )}
 
         <button onClick={doFetch} disabled={fetching}
-          className="w-full py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
-          style={{background:fetching?"#334155":"#22c55e",color:"#fff"}}>
-          {fetching?<><Spinner/> Fetching fresh jobs…</>:"🔍 Fetch Jobs (Last 72 hrs)"}
+          className="btn-pro w-full py-3 flex items-center justify-center gap-2"
+          style={{background:fetching?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+            color:fetching?"#475569":"#fff",border:"none",fontSize:13}}>
+          {fetching
+            ? <><Spinner/><span>Scanning live boards… {elapsed}s{elapsed>15?" · almost there":""}</span></>
+            : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><span>Find My Dream Jobs</span></>
+          }
         </button>
       </div>
 
       <ErrorBox msg={error}/>
+      <InfoBox msg={notice}/>
 
       {scoring && (
-        <div className="rounded-lg px-4 py-3 mb-4 text-sm flex items-center gap-2" style={{background:"#1e3a5f",color:"#93c5fd"}}>
-          <Spinner/> Claude is scoring jobs against your CV…
+        <div style={{borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,
+          background:"rgba(30,58,95,0.6)",border:"1px solid rgba(59,130,246,0.15)",color:"#60a5fa",
+          display:"flex",alignItems:"center",gap:10,fontFamily:"'Space Grotesk',sans-serif"}}>
+          <Spinner size={15}/> <span>Scoring jobs against your resume — only ≥75% matches will show…</span>
         </div>
       )}
 
-      {sorted.length===0&&!fetching && (
+      {sorted.length>0 && (
+        <div style={{borderRadius:12,padding:"10px 16px",marginBottom:16,fontSize:12,
+          background:"rgba(5,30,15,0.7)",border:"1px solid rgba(34,197,94,0.18)",color:"#4ade80",
+          display:"flex",alignItems:"center",justifyContent:"space-between",
+          fontFamily:"'Space Grotesk',sans-serif",fontWeight:500}}>
+          <span style={{display:"flex",alignItems:"center",gap:6}}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Showing <strong style={{fontWeight:800}}>{sorted.length}</strong> job{sorted.length!==1?"s":""} · {threshold>=75?"≥75% resume match":`best matches (≥${threshold}%)`}</span>
+          </span>
+          {filteredOut>0 && <span style={{color:"#1e3a2a",fontSize:11}}>{filteredOut} below threshold hidden</span>}
+        </div>
+      )}
+
+      {sorted.length===0&&!fetching&&!scoring && (
         <div className="text-center py-16" style={{color:"#475569"}}>
           <p className="text-lg mb-1">No jobs yet</p>
-          <p className="text-sm">Search above to pull live listings from the last 72 hours.</p>
+          <p className="text-sm">Search above to pull fresh listings scored against your resume.</p>
         </div>
       )}
 
-      {sorted.map(job=><JobCard key={job.id} job={job} onApply={doApply} scoring={scoring}/>)}
+      {sorted.map(job=><JobCard key={job.id} job={job} onApply={doApply} scoring={scoring} onOpen={setDrawerJob}/>)}
+    </div>
+    {drawerJob && <JobDrawer job={drawerJob} onClose={()=>setDrawerJob(null)} onApply={doApply}/>}
     </div>
   );
 }
@@ -414,18 +1131,215 @@ const COLUMNS = ["Saved","Applied","Screening","Technical Interview","Offer","Re
 const COL_COLORS = {Saved:"#475569",Applied:"#3b82f6",Screening:"#8b5cf6","Technical Interview":"#f59e0b",Offer:"#22c55e",Rejected:"#ef4444"};
 
 function KanbanCard({job,onDragStart}) {
+  const [dragging,setDragging]   = useState(false);
+  const [expanded,setExpanded]   = useState(false);
+  const [notes,setNotes]         = useState(job.notes||"");
+  const [saving,setSaving]       = useState(false);
+  const [research,setResearch]   = useState(null);
+  const [researching,setResearching] = useState(false);
+  const [followUp,setFollowUp]   = useState(null);
+  const [gettingFU,setGettingFU] = useState(false);
+  const [copied,setCopied]       = useState(false);
+  const [voiceActive,setVoiceActive] = useState(false);
+  const [interviewDate,setInterviewDate] = useState(()=>{
+    try{ return JSON.parse(localStorage.getItem("jr_interview_dates")||"{}")[job.id]||""; }catch{ return ""; }
+  });
+
+  const daysSince = Math.floor((new Date()-new Date(job.status_updated_at))/864e5);
+
+  const saveNotes = async () => {
+    setSaving(true);
+    await api.patch(`/api/jobs/${job.id}/notes`,{notes});
+    setSaving(false);
+  };
+
+  const startVoice = () => {
+    const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ alert("Voice input isn't supported in this browser. Try Chrome."); return; }
+    const rec = new SR();
+    rec.continuous=false; rec.interimResults=false; rec.lang="en-US";
+    setVoiceActive(true);
+    rec.onresult = e => { const t=e.results[0][0].transcript; setNotes(n=>n?n+"\n"+t:t); setVoiceActive(false); };
+    rec.onerror  = ()=>setVoiceActive(false);
+    rec.onend    = ()=>setVoiceActive(false);
+    rec.start();
+  };
+
+  const saveInterviewDate = (date) => {
+    setInterviewDate(date);
+    try{
+      const dates = JSON.parse(localStorage.getItem("jr_interview_dates")||"{}");
+      if(date) dates[job.id]=date; else delete dates[job.id];
+      localStorage.setItem("jr_interview_dates",JSON.stringify(dates));
+    }catch{}
+  };
+
+  const doResearch = async () => {
+    setResearching(true);
+    const r = await api.post("/api/company-research",{jd:job.job_description||""});
+    setResearching(false);
+    if(!r.error) setResearch(r);
+  };
+
+  const doFollowUp = async () => {
+    setGettingFU(true);
+    const r = await api.post("/api/follow-up-email",{job_id:job.id});
+    setGettingFU(false);
+    if(!r.error) setFollowUp(r);
+  };
+
+  const copyFollowUp = () => {
+    if(!followUp) return;
+    navigator.clipboard.writeText(`Subject: ${followUp.subject}\n\n${followUp.body}`);
+    setCopied(true); setTimeout(()=>setCopied(false),2000);
+  };
+
   return (
-    <div className="kanban-card rounded-lg p-3 mb-2" style={{background:"#0f172a"}}
-      draggable onDragStart={e=>onDragStart(e,job)}>
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="text-sm font-medium leading-snug flex-1">{job.job_title}</p>
-        <ScoreBadge score={job.match_score}/>
+    <div className={`kanban-card rounded-lg mb-2${dragging?" dragging":""}`} style={{background:"#0f172a"}}>
+      {/* Drag handle area */}
+      <div className="p-3" draggable
+        onDragStart={e=>{setDragging(true);e.dataTransfer.setData("jobId",String(job.id));if(onDragStart)onDragStart(e,job);}}
+        onDragEnd={()=>setDragging(false)}>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-sm font-medium leading-snug flex-1">{job.job_title}</p>
+          <ScoreBadge score={job.match_score}/>
+        </div>
+        <p className="text-xs mb-2" style={{color:"#64748b"}}>{job.company_name}</p>
+        <div className="flex items-center justify-between">
+          <PlatformTag name={job.platform_name}/>
+          <button onClick={e=>{e.stopPropagation();setExpanded(x=>!x);}}
+            className="text-xs px-2 py-0.5 rounded flex items-center gap-1"
+            style={{color:"#64748b",border:"1px solid #334155",background:"#1e293b"}}>
+            {expanded?"▲":"▼"} {expanded?"Less":"More"}
+          </button>
+        </div>
+        {daysSince>=7 && job.status==="Applied" && !expanded && (
+          <div className="mt-1.5 text-xs px-2 py-0.5 rounded inline-flex items-center gap-1" style={{background:"#1c3a5e",color:"#93c5fd"}}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            {daysSince}d — follow up?
+          </div>
+        )}
       </div>
-      <p className="text-xs mb-1.5" style={{color:"#64748b"}}>{job.company_name}</p>
-      <div className="flex items-center justify-between">
-        <PlatformTag name={job.platform_name}/>
-        <span className="text-xs" style={{color:"#475569"}}>{new Date(job.status_updated_at).toLocaleDateString()}</span>
-      </div>
+
+      {/* Expanded panel */}
+      {expanded && (
+        <div className="px-3 pb-3 slide-down" style={{borderTop:"1px solid #1e293b"}}>
+          {/* Notes */}
+          <div className="mt-3">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{color:"#64748b"}}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Notes
+            </p>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3}
+              className="w-full text-xs rounded-lg px-2 py-2 resize-none"
+              style={{background:"#111827",border:`1px solid ${voiceActive?"#8b5cf6":"#1e293b"}`,color:"#e2e8f0",lineHeight:1.6,transition:"border-color .2s"}}
+              placeholder="Add contacts, deadlines, interview notes…"/>
+            <div className="flex gap-2 mt-1.5">
+              <button onClick={saveNotes} disabled={saving} className="text-xs px-3 py-1 rounded"
+                style={{background:"#1e3a5f",color:"#93c5fd"}}>
+                {saving?"Saving…":"Save"}
+              </button>
+              <button onClick={startVoice} disabled={voiceActive} title="Dictate a note"
+                className="text-xs px-2 py-1 rounded flex items-center gap-1"
+                style={{background:voiceActive?"#4c1d9520":"#1e293b",color:voiceActive?"#a78bfa":"#64748b",
+                  border:`1px solid ${voiceActive?"#7c3aed40":"#334155"}`,transition:"all .2s"}}>
+                {voiceActive
+                  ? <><span className="pulse" style={{color:"#a78bfa"}}>●</span> Listening…</>
+                  : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg> Dictate</>
+                }
+              </button>
+            </div>
+          </div>
+
+          {/* Interview date scheduler */}
+          {(job.status==="Screening"||job.status==="Technical Interview") && (
+            <div className="mt-3 rounded-lg p-3" style={{background:"#111827",border:"1px solid #1e293b"}}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{color:"#64748b"}}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Schedule Interview
+              </p>
+              <div className="flex items-center gap-2">
+                <input type="date" value={interviewDate} min={new Date().toISOString().slice(0,10)}
+                  onChange={e=>saveInterviewDate(e.target.value)}
+                  className="flex-1 text-xs rounded-lg px-2 py-1.5"
+                  style={{background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",colorScheme:"dark"}}/>
+                {interviewDate&&(
+                  <button onClick={()=>saveInterviewDate("")} className="text-xs px-2 py-1 rounded"
+                    style={{color:"#64748b",border:"1px solid #334155"}}>✕</button>
+                )}
+              </div>
+              {interviewDate&&(()=>{
+                const diff=Math.ceil((new Date(interviewDate)-new Date(new Date().toDateString()))/86400000);
+                const col=diff<=0?"#ef4444":diff<=2?"#f59e0b":"#22c55e";
+                return <p className="text-xs mt-1.5 font-semibold" style={{color:col}}>
+                  {diff<=0?"Interview is TODAY — show up and own it!":diff===1?"Tomorrow — prepare and rest well!":`${diff} days away — stay sharp!`}
+                </p>;
+              })()}
+            </div>
+          )}
+
+          {/* AI action buttons */}
+          <div className="flex gap-2 mt-3">
+            <button onClick={doResearch} disabled={researching} className="flex-1 text-xs py-2 rounded-lg flex items-center justify-center gap-1"
+              style={{background:"#1a1a4a",color:"#a5b4fc",border:"1px solid #3730a3"}}>
+              {researching
+                ? <><Spinner size={11}/> Researching…</>
+                : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",marginRight:4,verticalAlign:"middle"}}><rect x="3" y="9" width="18" height="13" rx="1"/><path d="M8 9V7a4 4 0 018 0v2"/><line x1="12" y1="13" x2="12" y2="17"/></svg>Research Company</>
+              }
+            </button>
+            <button onClick={doFollowUp} disabled={gettingFU} className="flex-1 text-xs py-2 rounded-lg flex items-center justify-center gap-1"
+              style={{background:"#052e16",color:"#86efac",border:"1px solid #166534"}}>
+              {gettingFU
+                ? <><Spinner size={11}/> Drafting…</>
+                : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",marginRight:4,verticalAlign:"middle"}}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Follow-Up Email</>
+              }
+            </button>
+          </div>
+
+          {/* Company research card */}
+          {research && (
+            <div className="mt-3 rounded-lg p-3 slide-down" style={{background:"#1e293b",border:"1px solid #3730a3"}}>
+              <p className="text-xs font-bold mb-1 flex items-center gap-1.5" style={{color:"#a5b4fc"}}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="9" width="18" height="13" rx="1"/><path d="M8 9V7a4 4 0 018 0v2"/></svg>
+                {research.company_name} · {research.company_type}
+              </p>
+              <p className="text-xs mb-2" style={{color:"#94a3b8",lineHeight:1.6}}>{research.summary}</p>
+              {research.tech_stack?.length>0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {research.tech_stack.slice(0,8).map((t,i)=>(
+                    <span key={i} className="text-xs px-1.5 py-0.5 rounded" style={{background:"#312e81",color:"#a5b4fc"}}>{t}</span>
+                  ))}
+                </div>
+              )}
+              {research.questions_to_ask?.length>0 && (
+                <>
+                  <p className="text-xs font-semibold mb-1" style={{color:"#64748b"}}>Ask them:</p>
+                  {research.questions_to_ask.slice(0,2).map((q,i)=><p key={i} className="text-xs mb-0.5" style={{color:"#93c5fd"}}>• {q}</p>)}
+                </>
+              )}
+              {research.talking_points?.length>0 && (
+                <>
+                  <p className="text-xs font-semibold mt-2 mb-1" style={{color:"#64748b"}}>Impress them with:</p>
+                  {research.talking_points.slice(0,2).map((t,i)=><p key={i} className="text-xs mb-0.5" style={{color:"#86efac"}}>✓ {t}</p>)}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Follow-up email card */}
+          {followUp && (
+            <div className="mt-3 rounded-lg p-3 slide-down" style={{background:"#052e16",border:"1px solid #166534"}}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold" style={{color:"#4ade80"}}>Subject: {followUp.subject}</p>
+                <button onClick={copyFollowUp} className="text-xs px-2 py-0.5 rounded" style={{background:"#14532d",color:"#4ade80"}}>
+                  {copied?"✓ Copied":"Copy"}
+                </button>
+              </div>
+              <p className="text-xs" style={{color:"#86efac",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{followUp.body}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -434,7 +1348,7 @@ function KanbanCol({title,jobs,onDrop,isOver}) {
   const [over,setOver] = useState(false);
   return (
     <div className={`rounded-xl flex flex-col ${isOver||over?"drag-over":""}`}
-      style={{background:"#1e293b",minWidth:210,flex:"0 0 210px"}}
+      style={{background:"rgba(17,24,39,0.75)",border:"1px solid rgba(255,255,255,0.05)",minWidth:210,flex:"0 0 210px",backdropFilter:"blur(12px)"}}
       onDragOver={e=>{e.preventDefault();setOver(true);}}
       onDragLeave={()=>setOver(false)}
       onDrop={e=>{setOver(false);onDrop(e,title);}}>
@@ -473,9 +1387,9 @@ function Tracker({jobs,onJobsUpdated}) {
   const hasJobs = Object.values(tracker).some(a=>a.length>0);
 
   return (
-    <div className="pt-10 px-4">
-      <h2 className="text-2xl font-bold mb-1">Application Tracker</h2>
-      <p className="text-sm mb-6" style={{color:"#94a3b8"}}>Drag cards between columns as your applications progress.</p>
+    <div className="tab-enter">
+    <SectionHero tab="Tracker"/>
+    <div className="pt-6 px-4">
       {!hasJobs&&<div className="text-center py-16" style={{color:"#475569"}}><p className="text-lg mb-1">No applications yet</p><p className="text-sm">Apply to jobs from the Job Feed.</p></div>}
       <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map(col=>(
@@ -484,26 +1398,510 @@ function Tracker({jobs,onJobsUpdated}) {
         ))}
       </div>
     </div>
-  );
-}
-
-/* ── Dashboard Tab ── */
-function StatCard({label,value,sub}) {
-  return (
-    <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
-      <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{color:"#64748b"}}>{label}</p>
-      <p className="text-3xl font-black">{value}</p>
-      {sub&&<p className="text-xs mt-1" style={{color:"#94a3b8"}}>{sub}</p>}
     </div>
   );
 }
 
-function Dashboard({jobs}) {
-  const [data,setData] = useState(null);
-  const chartRef       = useRef();
-  const chartInst      = useRef();
+/* ── Dashboard Tab ── */
 
-  useEffect(()=>{api.get("/api/dashboard").then(r=>{if(!r.error)setData(r);});},[jobs]);
+/* Activity Heatmap — GitHub-style 52-week grid */
+function ActivityHeatmap({jobs}) {
+  const today = new Date();
+  today.setHours(23,59,59,999);
+
+  // Build day-count map from all non-Saved jobs
+  const counts = {};
+  (jobs||[]).forEach(j => {
+    if(j.status !== "Saved" && j.status_updated_at) {
+      const d = j.status_updated_at.slice(0,10);
+      counts[d] = (counts[d]||0) + 1;
+    }
+  });
+
+  // Start grid from 52 weeks ago aligned to Sunday
+  const start = new Date(today);
+  start.setDate(start.getDate() - 363);
+  start.setDate(start.getDate() - start.getDay()); // snap to Sunday
+
+  // Build 53 weeks
+  const weeks = [];
+  const cur = new Date(start);
+  for(let w=0;w<53;w++) {
+    const week=[];
+    for(let d=0;d<7;d++) {
+      const ds = cur.toISOString().slice(0,10);
+      week.push({date:ds, count:counts[ds]||0, future:cur>today});
+      cur.setDate(cur.getDate()+1);
+    }
+    weeks.push(week);
+  }
+
+  // Month label: first week of each month
+  const monthLabels=[];
+  weeks.forEach((wk,wi)=>{
+    const first=wk.find(d=>!d.future);
+    if(!first) return;
+    const dt=new Date(first.date);
+    if(dt.getDate()<=7) monthLabels.push({wi,label:dt.toLocaleString("default",{month:"short"})});
+  });
+
+  const cellColor = (count,future) => {
+    if(future) return "transparent";
+    if(count===0) return "#111827";
+    if(count===1) return "#14532d";
+    if(count===2) return "#166534";
+    if(count<=4)  return "#15803d";
+    return "#22c55e";
+  };
+
+  const totalDays = Object.values(counts).reduce((a,b)=>a+b,0);
+
+  return (
+    <div style={{borderRadius:14,padding:"20px 22px",marginBottom:24,
+      background:"rgba(9,14,24,0.88)",border:"1px solid rgba(255,255,255,0.07)"}}>
+      <div className="flex items-center justify-between mb-3">
+        <p style={{fontSize:13,fontWeight:700,letterSpacing:"-0.01em",fontFamily:"'Space Grotesk',sans-serif"}}>Application Activity</p>
+        <span className="text-xs" style={{color:"#4b5563"}}>{totalDays} total actions tracked</span>
+      </div>
+      {/* Month labels row */}
+      <div style={{display:"flex",gap:2,marginBottom:4,marginLeft:0}}>
+        {weeks.map((_,wi)=>{
+          const lbl = monthLabels.find(m=>m.wi===wi);
+          return <div key={wi} style={{width:11,fontSize:9,color:"#4b5563",flexShrink:0,overflow:"hidden",whiteSpace:"nowrap"}}>
+            {lbl?lbl.label:""}
+          </div>;
+        })}
+      </div>
+      {/* Grid */}
+      <div style={{display:"flex",gap:2}}>
+        {weeks.map((week,wi)=>(
+          <div key={wi} style={{display:"flex",flexDirection:"column",gap:2}}>
+            {week.map((day,di)=>(
+              <div key={di}
+                title={day.future?"":day.count===0?day.date:`${day.date}: ${day.count} application${day.count!==1?"s":""}`}
+                style={{width:11,height:11,borderRadius:2,background:cellColor(day.count,day.future),
+                  transition:"transform .1s",cursor:day.count>0?"pointer":"default",flexShrink:0}}
+                onMouseEnter={e=>{if(day.count>0)e.target.style.transform="scale(1.3)";}}
+                onMouseLeave={e=>{e.target.style.transform="scale(1)";}}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-2 mt-3">
+        <span style={{fontSize:10,color:"#4b5563"}}>Less</span>
+        {[0,1,2,3,5].map(v=>(
+          <div key={v} style={{width:11,height:11,borderRadius:2,background:cellColor(v,false)}}/>
+        ))}
+        <span style={{fontSize:10,color:"#4b5563"}}>More</span>
+      </div>
+    </div>
+  );
+}
+
+/* Daily Challenge widget */
+function DailyChallenge() {
+  const [challenge,setChallenge] = useState(null);
+  const [loading,setLoading]     = useState(false);
+  const [done,setDone]           = useState([]);
+
+  const todayKey = new Date().toISOString().slice(0,10);
+  const lsKey    = `jr_challenge_${todayKey}`;
+
+  useEffect(()=>{
+    try{
+      const cached = JSON.parse(localStorage.getItem(lsKey)||"null");
+      if(cached){ setChallenge(cached); return; }
+    }catch{}
+    generate();
+  },[]);
+
+  const generate = async () => {
+    setLoading(true); setChallenge(null); setDone([]);
+    const r = await api.post("/api/daily-challenge",{});
+    setLoading(false);
+    if(!r.error){
+      setChallenge(r);
+      try{ localStorage.setItem(lsKey, JSON.stringify(r)); }catch{}
+    }
+  };
+
+  const FOCUS_COLORS = {Apply:"#22c55e",Network:"#3b82f6",Learn:"#8b5cf6",Improve:"#f59e0b",Research:"#06b6d4"};
+
+  if(loading) return (
+    <div className="rounded-xl p-5 mb-4" style={{background:"rgba(17,24,39,0.8)",border:"1px solid rgba(255,255,255,0.05)"}}>
+      <div className="flex items-center gap-2"><Spinner/><span className="text-sm" style={{color:"#4b5563"}}>Claude is crafting today's mission…</span></div>
+    </div>
+  );
+  if(!challenge) return null;
+
+  const color = FOCUS_COLORS[challenge.focus]||"#22c55e";
+  const allDone = challenge.tasks?.length>0 && done.length===challenge.tasks.length;
+
+  return (
+    <div className="rounded-xl p-5 mb-4 slide-down" style={{
+      background:`linear-gradient(135deg,${color}0f 0%,rgba(17,24,39,0.9) 65%)`,
+      border:`1px solid ${color}22`,
+    }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1.5" style={{background:`${color}20`,color,letterSpacing:"0.08em"}}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+            TODAY'S MISSION
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{background:`${color}12`,color:color,border:`1px solid ${color}20`}}>{challenge.focus}</span>
+          {allDone && <span className="text-xs px-2 py-0.5 rounded-full" style={{background:"#22c55e20",color:"#22c55e"}}>✓ Complete!</span>}
+        </div>
+        <button onClick={generate} className="text-xs px-2 py-1 rounded-lg" title="Refresh mission"
+          style={{color:"#4b5563",border:"1px solid rgba(255,255,255,0.06)",background:"rgba(255,255,255,0.03)"}}>↻</button>
+      </div>
+      <p className="font-bold text-sm mb-4 leading-relaxed" style={{color:"#f1f5f9"}}>{challenge.challenge}</p>
+      <div className="space-y-2 mb-4">
+        {(challenge.tasks||[]).map((t,i)=>(
+          <div key={i} className="flex items-start gap-3 cursor-pointer" onClick={()=>setDone(d=>d.includes(i)?d.filter(x=>x!==i):[...d,i])}>
+            <div style={{
+              width:16,height:16,borderRadius:4,flexShrink:0,marginTop:1,
+              background:done.includes(i)?color:"transparent",
+              border:`1.5px solid ${done.includes(i)?color:"#334155"}`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              transition:"all .2s",
+            }}>
+              {done.includes(i)&&<span style={{fontSize:9,color:"#fff",fontWeight:700}}>✓</span>}
+            </div>
+            <span className="text-sm leading-relaxed" style={{color:done.includes(i)?"#4b5563":"#94a3b8",textDecoration:done.includes(i)?"line-through":"none",transition:"all .2s"}}>{t}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs italic" style={{color:`${color}80`,lineHeight:1.6}}>{challenge.motivation}</p>
+    </div>
+  );
+}
+
+/* Count-up animation for stat numbers */
+function useCountUp(target,dur=900){
+  const [val,setVal] = useState(0);
+  useEffect(()=>{
+    let raf; const start = performance.now();
+    const step = now=>{
+      const p = Math.min((now-start)/dur,1);
+      setVal(Math.round(target*(1-Math.pow(1-p,3))));   // ease-out cubic
+      if(p<1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return ()=>cancelAnimationFrame(raf);
+  },[target]);
+  return val;
+}
+
+function AnimatedValue({value}){
+  const m = typeof value==="string" ? value.match(/^(-?[\d.]+)(.*)$/) : null;
+  const num = typeof value==="number" ? value : (m ? parseFloat(m[1]) : NaN);
+  const suffix = m ? m[2] : "";
+  const v = useCountUp(isNaN(num)?0:num);
+  if(isNaN(num)) return <>{value}</>;
+  return <>{v}{suffix}</>;
+}
+
+function StatCard({label,value,sub,accent}) {
+  const ac = accent||"#f1f5f9";
+  return (
+    <div className="card-lift" style={{background:"rgba(9,14,24,0.88)",
+      border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"20px 22px",
+      borderTop:`2px solid ${ac}30`,transition:"transform .25s,box-shadow .25s"}}
+      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 14px 32px rgba(0,0,0,0.4)";}}
+      onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}>
+      <p className="sec-label" style={{marginBottom:10}}>{label}</p>
+      <p className="stat-hero" style={{color:ac,fontFamily:"'Space Grotesk',sans-serif"}}><AnimatedValue value={value}/></p>
+      {sub&&<p style={{fontSize:11,marginTop:8,color:"#334155",fontFamily:"'Space Grotesk',sans-serif"}}>{sub}</p>}
+    </div>
+  );
+}
+
+function TodayGoalRing({done,goal,onGoalChange}) {
+  const R=28, CIRC=2*Math.PI*R;
+  const pct = Math.min(done/(goal||3),1);
+  const offset = CIRC*(1-pct);
+  const color = pct>=1?"#22c55e":pct>=.5?"#f59e0b":"#3b82f6";
+  return (
+    <div style={{borderRadius:14,padding:18,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(9,14,24,0.88)",border:"1px solid rgba(255,255,255,0.07)",minHeight:140}}>
+      <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{color:"#64748b"}}>Today's Goal</p>
+      <div className="relative flex items-center justify-center" style={{width:72,height:72}}>
+        <svg width={72} height={72} style={{transform:"rotate(-90deg)"}}>
+          <circle cx={36} cy={36} r={R} fill="none" stroke="#334155" strokeWidth={6}/>
+          <circle cx={36} cy={36} r={R} fill="none" stroke={color} strokeWidth={6}
+            strokeDasharray={CIRC} strokeDashoffset={offset}
+            style={{transition:"stroke-dashoffset .5s ease,stroke .3s"}} strokeLinecap="round"/>
+        </svg>
+        <div className="absolute text-center">
+          <span className="text-lg font-black" style={{color}}>{done}</span>
+          <span className="text-xs" style={{color:"#475569"}}>/{goal}</span>
+        </div>
+      </div>
+      <p className="text-xs mt-2 text-center" style={{color:pct>=1?"#22c55e":"#94a3b8"}}>
+        {pct>=1?"Goal crushed — keep the momentum!":"Apply to jobs today"}
+      </p>
+      <div className="flex gap-1 mt-2">
+        {[1,2,3,5,7].map(n=>(
+          <button key={n} onClick={()=>onGoalChange(n)}
+            className="text-xs px-2 py-0.5 rounded"
+            style={{background:goal===n?"#334155":"transparent",color:goal===n?"#f1f5f9":"#475569",border:"1px solid #334155"}}>
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function JobSearchScore({score}) {
+  const color = score>=70?"#22c55e":score>=40?"#f59e0b":"#ef4444";
+  const label = score>=80?"Excellent":score>=60?"Strong":score>=40?"Building":"Just Starting";
+  const pct = score;
+  return (
+    <div style={{borderRadius:14,padding:"20px 22px",marginBottom:24,
+      background:"rgba(9,14,24,0.88)",border:"1px solid rgba(255,255,255,0.07)",
+      borderTop:`2px solid ${color}35`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <p style={{fontSize:13,fontWeight:700,letterSpacing:"-0.01em",fontFamily:"'Space Grotesk',sans-serif",margin:0}}>Job Search Score</p>
+        <span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99,
+          background:`${color}18`,color,border:`1px solid ${color}30`,letterSpacing:"0.06em",
+          fontFamily:"'Space Grotesk',sans-serif"}}>{label.toUpperCase()}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:6,marginBottom:12}}>
+        <span className="stat-hero score-reveal" style={{color,fontFamily:"'Space Grotesk',sans-serif"}}>{score}</span>
+        <span style={{fontSize:18,color:"#1e293b",marginBottom:4,fontWeight:300}}>/100</span>
+      </div>
+      <div style={{width:"100%",borderRadius:99,height:4,background:"rgba(255,255,255,0.05)",overflow:"hidden"}}>
+        <div style={{height:4,borderRadius:99,background:color,width:`${pct}%`,transition:"width .8s ease"}}/>
+      </div>
+      <p style={{fontSize:11,marginTop:10,color:"#1e293b",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.02em"}}>
+        30% application volume · 40% match quality · 30% response rate
+      </p>
+    </div>
+  );
+}
+
+function AchievementBadges({data,tracker,streak}) {
+  const allActive = Object.entries(tracker).filter(([c])=>c!=="Saved").flatMap(([,a])=>a);
+  const weekMs = 7*864e5;
+  const now = Date.now();
+  const thisWeekCount = allActive.filter(j=>now-new Date(j.status_updated_at)<weekMs).length;
+  const BADGE_SVGS = {
+    "First Application": (c) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="2" fill={c}/></svg>,
+    "Week Warrior":      (c) => <svg width="22" height="22" viewBox="0 0 24 24" fill={c} stroke="none"><polygon points="12,2 15.1,8.6 22.5,9.5 17.3,14.5 18.7,22 12,18.3 5.3,22 6.7,14.5 1.5,9.5 8.9,8.6"/></svg>,
+    "Streak Master":     (c) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2c.7 2 2 4 4 6-1 .5-2.5 1-3 2 2 1 3 3 3 5a5 5 0 01-10 0c0-3 2-5 4-6-1-2-1-4 2-7z" fill={c} opacity="0.9"/></svg>,
+    "Interview Unlocked":(c) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><polyline points="9 11 11 13 15 9"/></svg>,
+    "Offer Received":    (c) => <svg width="22" height="22" viewBox="0 0 24 24" fill={c} stroke="none"><polygon points="12,1 15.3,8 23,9.3 17.5,14.7 19,22.5 12,18.8 5,22.5 6.5,14.7 1,9.3 8.7,8"/></svg>,
+    "Score Ace":         (c) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8.5 13.5l2 2 5-6"/></svg>,
+  };
+  const BADGE_COLORS = {
+    "First Application":"#22c55e","Week Warrior":"#f59e0b","Streak Master":"#f97316",
+    "Interview Unlocked":"#8b5cf6","Offer Received":"#fbbf24","Score Ace":"#06b6d4"
+  };
+  const badges = [
+    {label:"First Application",sub:"Applied to your first job",earned:data.total_applications>=1},
+    {label:"Week Warrior",sub:`5 apps in a week (${thisWeekCount}/5)`,earned:thisWeekCount>=5},
+    {label:"Streak Master",sub:`7-day streak (${streak}/7)`,earned:streak>=7},
+    {label:"Interview Unlocked",sub:"Reached screening or interview",earned:(data.funnel?.Screening||0)+(data.funnel?.["Technical Interview"]||0)>0},
+    {label:"Offer Received",sub:"Got an offer — amazing!",earned:(data.funnel?.Offer||0)>0},
+    {label:"Score Ace",sub:`Avg match ≥80% (${data.avg_match_score||0}%)`,earned:(data.avg_match_score||0)>=80},
+  ];
+  return (
+    <div className="rounded-xl p-4 mb-6" style={{background:"#1e293b"}}>
+      <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{color:"#64748b"}}>Achievements</p>
+      <div className="flex flex-wrap gap-3">
+        {badges.map((b,i)=>{
+          const c = BADGE_COLORS[b.label]||"#22c55e";
+          const dimC = "#2a3040";
+          return (
+            <div key={i} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl ${b.earned?"badge-earned":""}`}
+              style={{background:"#0f172a",border:`1px solid ${b.earned?c+"50":"#1e293b"}`,
+                      boxShadow:b.earned?`0 0 14px ${c}15`:"none",
+                      opacity:b.earned?1:0.35,minWidth:80}}>
+              <span style={{filter:b.earned?"none":"grayscale(1)"}}>{BADGE_SVGS[b.label]?.(b.earned?c:dimC)}</span>
+              <span className="text-xs font-semibold text-center leading-tight" style={{color:b.earned?"#f1f5f9":"#475569"}}>{b.label}</span>
+              <span className="text-xs text-center" style={{color:"#475569",fontSize:10}}>{b.sub}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RejectionAnalyzer() {
+  const [loading,setLoading] = useState(false);
+  const [result,setResult]   = useState(null);
+  const [error,setError]     = useState("");
+  const [open,setOpen]       = useState(false);
+
+  const analyze = async () => {
+    setLoading(true); setError("");
+    const r = await api.get("/api/rejection-analysis");
+    setLoading(false);
+    if(r.error){setError(r.error);return;}
+    setResult(r); setOpen(true);
+  };
+
+  return (
+    <div className="rounded-xl p-5 mb-6" style={{background:"#1e293b"}}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-semibold">Rejection Pattern Analyzer</p>
+          <p className="text-xs mt-0.5" style={{color:"#64748b"}}>Turn rejections into a targeted improvement roadmap</p>
+        </div>
+        <button onClick={analyze} disabled={loading}
+          className="text-sm px-4 py-2 rounded-lg font-medium"
+          style={{background:loading?"#334155":"#ef444420",color:"#ef4444",border:"1px solid #ef444430"}}>
+          {loading
+            ? <><Spinner size={14}/> Analyzing…</>
+            : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",marginRight:5,verticalAlign:"middle"}}><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>Analyze Rejections</>
+          }
+        </button>
+      </div>
+      {error && <ErrorBox msg={error}/>}
+      {result && open && (
+        <div className="slide-down">
+          <div className="rounded-lg p-3 mb-3" style={{background:"#450a0a",border:"1px solid #7f1d1d"}}>
+            <p className="text-sm font-medium mb-1" style={{color:"#fca5a5"}}>Pattern Summary</p>
+            <p className="text-xs" style={{color:"#f87171",lineHeight:1.7}}>{result.pattern_summary}</p>
+          </div>
+          {result.top_gaps?.length>0 && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#64748b"}}>Top Skill Gaps</p>
+              {result.top_gaps.slice(0,4).map((g,i)=>(
+                <div key={i} className="flex items-center gap-3 mb-2 rounded-lg px-3 py-2" style={{background:"#0f172a"}}>
+                  <div className="flex-1">
+                    <span className="text-xs font-semibold" style={{color:"#fbbf24"}}>{g.skill}</span>
+                    <span className="text-xs ml-2" style={{color:"#475569"}}>seen in {g.frequency} JDs</span>
+                  </div>
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{background:g.severity==="Critical"?"#450a0a":"#1c1a03",color:g.severity==="Critical"?"#fca5a5":"#fbbf24"}}>{g.severity}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.recommendations?.length>0 && (
+            <div className="rounded-lg p-3 mb-3" style={{background:"#052e16",border:"1px solid #166534"}}>
+              <p className="text-xs font-semibold mb-2" style={{color:"#4ade80"}}>Action Plan</p>
+              {result.recommendations.map((r,i)=><p key={i} className="text-xs mb-1" style={{color:"#86efac"}}>▸ {r}</p>)}
+            </div>
+          )}
+          <div className="rounded-lg p-3" style={{background:"#1e3a5f"}}>
+            <p className="text-xs" style={{color:"#93c5fd",lineHeight:1.7}}>{result.encouragement}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeeklyDigest() {
+  const [digest,setDigest] = useState(null);
+  const [loading,setLoading] = useState(false);
+  const [open,setOpen] = useState(false);
+
+  const load = async () => {
+    if(digest){setOpen(x=>!x);return;}
+    setLoading(true);
+    const r = await api.get("/api/weekly-digest");
+    setLoading(false);
+    if(!r.error){setDigest(r);setOpen(true);}
+  };
+
+  return (
+    <div className="rounded-xl p-5 mb-6" style={{background:"#1e293b"}}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">Weekly Digest</p>
+          <p className="text-xs mt-0.5" style={{color:"#64748b"}}>Your job search week in review</p>
+        </div>
+        <button onClick={load} disabled={loading}
+          className="text-sm px-4 py-2 rounded-lg font-medium"
+          style={{background:"#1e3a5f",color:"#93c5fd",border:"1px solid #1d4ed8"}}>
+          {loading?<><Spinner size={14}/> Loading…</>:open?"▲ Hide":"📋 View Digest"}
+        </button>
+      </div>
+      {digest && open && (
+        <div className="mt-4 slide-down">
+          <div className="grid gap-3 mb-3" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
+            <div className="rounded-lg p-3 text-center" style={{background:"#0f172a"}}>
+              <p className="text-2xl font-black" style={{color:"#a0c4ff"}}>{digest.applications_this_week}</p>
+              <p className="text-xs mt-1" style={{color:"#64748b"}}>Apps this week</p>
+            </div>
+            <div className="rounded-lg p-3 text-center" style={{background:"#0f172a"}}>
+              <p className="text-2xl font-black flex items-center justify-center gap-1" style={{color:"#3b82f6"}}>
+                {digest.active_streak}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#f97316" stroke="none"><path d="M12 2c.7 2 2 4 4 6-1 .5-2.5 1-3 2 2 1 3 3 3 5a5 5 0 01-10 0c0-3 2-5 4-6-1-2-1-4 2-7z" opacity="0.9"/></svg>
+              </p>
+              <p className="text-xs mt-1" style={{color:"#64748b"}}>Day streak</p>
+            </div>
+            <div className="rounded-lg p-3 text-center" style={{background:"#0f172a"}}>
+              <p className="text-2xl font-black" style={{color:"#f59e0b"}}>{digest.avg_match_score||"—"}{digest.avg_match_score?"%":""}</p>
+              <p className="text-xs mt-1" style={{color:"#64748b"}}>Avg match</p>
+            </div>
+          </div>
+          {digest.best_application_this_week && (
+            <div className="rounded-lg px-3 py-2 mb-3 flex items-center gap-3" style={{background:"#0f172a",border:"1px solid rgba(91,141,254,0.28)"}}>
+              <span style={{fontSize:18}}>⭐</span>
+              <div>
+                <p className="text-xs font-semibold" style={{color:"#a0c4ff"}}>Best app this week</p>
+                <p className="text-xs" style={{color:"#94a3b8"}}>{digest.best_application_this_week.title} @ {digest.best_application_this_week.company} · {digest.best_application_this_week.score}% match</p>
+              </div>
+            </div>
+          )}
+          <div className="rounded-lg px-3 py-2.5" style={{background:"#1e3a5f"}}>
+            <p className="text-xs" style={{color:"#93c5fd",lineHeight:1.7}}>💡 {digest.top_tip}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({jobs,profile}) {
+  const [data,setData]       = useState(null);
+  const [tracker,setTracker] = useState({});
+  const [goal,setGoal]       = useState(()=>{try{const s=localStorage.getItem("jrGoal");return s?JSON.parse(s).count:3;}catch{return 3;}});
+  const chartRef   = useRef();
+  const velRef     = useRef();
+  const chartInst  = useRef();
+  const velInst    = useRef();
+
+  useEffect(()=>{
+    api.get("/api/dashboard").then(r=>{if(!r.error)setData(r);});
+    api.get("/api/tracker").then(r=>{if(!r.error)setTracker(r.tracker||{});});
+  },[jobs]);
+
+  // Streak: consecutive days with applied activity
+  const streak = (() => {
+    const allActive = Object.entries(tracker).filter(([col])=>col!=="Saved").flatMap(([,arr])=>arr);
+    const days = [...new Set(allActive.map(j=>j.status_updated_at?.slice(0,10)).filter(Boolean))].sort().reverse();
+    let count=0;
+    const today=new Date();
+    for(let i=0;i<days.length;i++){
+      const exp=new Date(today); exp.setDate(today.getDate()-i);
+      if(days[i]===exp.toISOString().slice(0,10)) count++; else break;
+    }
+    return count;
+  })();
+
+  // Today's applied count
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todayApplied = Object.entries(tracker).filter(([col])=>col!=="Saved")
+    .flatMap(([,arr])=>arr).filter(j=>j.status_updated_at?.startsWith(todayStr)).length;
+
+  // Job Search Score composite
+  const jobScore = data ? Math.round(
+    Math.min((data.total_applications/20),1)*30 +
+    (data.avg_match_score||0)*0.4 +
+    data.response_rate*0.3
+  ) : 0;
+
+  const saveGoal = (n) => {
+    setGoal(n);
+    try{localStorage.setItem("jrGoal",JSON.stringify({count:n}));}catch{}
+  };
 
   useEffect(()=>{
     if(!data||!chartRef.current) return;
@@ -516,21 +1914,110 @@ function Dashboard({jobs}) {
     });
   },[data]);
 
+  // Velocity chart: weekly apps over last 6 weeks
+  useEffect(()=>{
+    if(!velRef.current||Object.keys(tracker).length===0) return;
+    if(velInst.current) velInst.current.destroy();
+    const allActive = Object.entries(tracker).filter(([c])=>c!=="Saved").flatMap(([,a])=>a);
+    const labels=[],counts=[];
+    for(let w=5;w>=0;w--){
+      const start=new Date(); start.setDate(start.getDate()-w*7-6);
+      const end=new Date(); end.setDate(end.getDate()-w*7);
+      const s=start.toISOString().slice(0,10), e=end.toISOString().slice(0,10);
+      labels.push(`W-${w===0?"now":w}`);
+      counts.push(allActive.filter(j=>{const d=j.status_updated_at?.slice(0,10)||"";return d>=s&&d<=e;}).length);
+    }
+    velInst.current = new Chart(velRef.current,{
+      type:"line",
+      data:{labels,datasets:[{label:"Apps",data:counts,borderColor:"#5b8dfe",backgroundColor:"rgba(91,141,254,0.09)",borderWidth:2,pointBackgroundColor:"#5b8dfe",tension:0.4,fill:true}]},
+      options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#94a3b8"},grid:{color:"#1e293b"}},y:{ticks:{color:"#94a3b8",stepSize:1},grid:{color:"#334155"},beginAtZero:true}}}
+    });
+  },[tracker]);
+
   if(!data) return <div className="flex justify-center pt-20"><Spinner size={32}/></div>;
 
   return (
-    <div className="max-w-3xl mx-auto pt-10 px-4">
-      <h2 className="text-2xl font-bold mb-1">Dashboard</h2>
-      <p className="text-sm mb-6" style={{color:"#94a3b8"}}>Live analytics across all applications.</p>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="tab-enter">
+    <SectionHero tab="Dashboard"/>
+    <div className="max-w-3xl mx-auto pt-8 px-4">
+
+      {/* Personalized greeting */}
+      {(()=>{
+        const hr = new Date().getHours();
+        const timeGreet = hr<5?"Burning the midnight oil":hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+        const firstName = (profile?.full_name||"").split(" ")[0];
+        const line = todayApplied>0
+          ? `${todayApplied} application${todayApplied>1?"s":""} logged today — keep the momentum going.`
+          : streak>0
+            ? `You're on a ${streak}-day streak. One application today keeps it alive.`
+            : "A single application today starts a new streak.";
+        return (
+          <div className="panel-glass p-5 mb-5" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+            <div>
+              <p style={{fontSize:20,fontWeight:800,letterSpacing:"-0.02em",marginBottom:3,
+                background:"linear-gradient(135deg,#fff 30%,#5b8dfe 100%)",
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+                {timeGreet}{firstName?`, ${firstName}`:""} ✦
+              </p>
+              <p style={{fontSize:13,color:"#94a3b8",margin:0}}>{line}</p>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <p style={{fontSize:11,color:"#475569",margin:0,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'Space Grotesk',sans-serif"}}>
+                {new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Top 4-column row */}
+      <div className="gap-4 mb-4" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 160px"}}>
         <StatCard label="Total Applications" value={data.total_applications} sub="jobs applied to"/>
         <StatCard label="Response Rate"      value={`${data.response_rate}%`} sub="moved past Applied"/>
-        <StatCard label="Avg Match Score"    value={data.avg_match_score?`${data.avg_match_score}%`:"—"} sub="across applications"/>
+        <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{color:"#64748b"}}>Active Streak</p>
+          <p className={`text-3xl font-black streak-pop flex items-center gap-1`}>
+            {streak>0?<>{streak}<svg width="22" height="22" viewBox="0 0 24 24" fill="#f97316" stroke="none"><path d="M12 2c.7 2 2 4 4 6-1 .5-2.5 1-3 2 2 1 3 3 3 5a5 5 0 01-10 0c0-3 2-5 4-6-1-2-1-4 2-7z" opacity="0.9"/></svg></>:"—"}
+          </p>
+          <p className="text-xs mt-1" style={{color:"#94a3b8"}}>
+            {streak===0?"Start applying!"
+             :streak===1?"1 day strong"
+             :`${streak} days in a row`}
+          </p>
+        </div>
+        <TodayGoalRing done={todayApplied} goal={goal} onGoalChange={saveGoal}/>
       </div>
-      <div className="rounded-xl p-5" style={{background:"#1e293b"}}>
-        <p className="text-sm font-semibold mb-4">Application Funnel</p>
-        <canvas ref={chartRef} height={180}/>
+
+      {/* Daily Challenge */}
+      <DailyChallenge/>
+
+      {/* Job Search Score */}
+      <JobSearchScore score={jobScore}/>
+
+      {/* Achievement Badges */}
+      <AchievementBadges data={data} tracker={tracker} streak={streak}/>
+
+      {/* Weekly Digest */}
+      <WeeklyDigest/>
+
+      {/* Charts row */}
+      <div className="grid gap-4 mb-6" style={{gridTemplateColumns:"1fr 1fr"}}>
+        <div style={{borderRadius:14,padding:"20px 22px",background:"rgba(9,14,24,0.88)",border:"1px solid rgba(255,255,255,0.07)"}}>
+          <p style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#334155",fontFamily:"'Space Grotesk',sans-serif",marginBottom:16}}>Application Funnel</p>
+          <canvas ref={chartRef} height={200}/>
+        </div>
+        <div style={{borderRadius:14,padding:"20px 22px",background:"rgba(9,14,24,0.88)",border:"1px solid rgba(255,255,255,0.07)"}}>
+          <p style={{fontSize:12,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#334155",fontFamily:"'Space Grotesk',sans-serif",marginBottom:16}}>Weekly Velocity</p>
+          <canvas ref={velRef} height={200}/>
+        </div>
       </div>
+
+      {/* Activity Heatmap */}
+      <ActivityHeatmap jobs={jobs}/>
+
+      {/* Rejection Analyzer */}
+      <RejectionAnalyzer/>
+    </div>
     </div>
   );
 }
@@ -539,29 +2026,39 @@ function Dashboard({jobs}) {
 function CopyBtn({text}) {
   const [ok,setOk] = useState(false);
   const copy = ()=>{navigator.clipboard.writeText(text);setOk(true);setTimeout(()=>setOk(false),2000);};
-  return <button onClick={copy} className="text-xs px-2 py-1 rounded" style={{background:"#334155",color:"#94a3b8"}}>{ok?"✓ Copied":"Copy"}</button>;
+  return (
+    <button onClick={copy} className="copy-btn">
+      {ok?"✓ Copied":"Copy"}
+    </button>
+  );
 }
 
 function DocCard({title,color,content,downloadHref,downloadLabel,note}) {
   if(!content) return null;
   const displayText = typeof content==="string"?content:"";
   return (
-    <div className="rounded-xl mb-4 overflow-hidden" style={{background:"#1e293b"}}>
-      <div className="flex items-center justify-between px-5 py-3 border-b" style={{borderColor:"#334155"}}>
-        <h3 className="font-semibold text-sm" style={{color}}>{title}</h3>
-        <div className="flex gap-2">
+    <div className="doc-card-pro" style={{borderLeft:`3px solid ${color}60`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+        padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+        <h3 style={{fontSize:12,fontWeight:700,color,letterSpacing:"0.06em",
+          textTransform:"uppercase",fontFamily:"'Space Grotesk',sans-serif",margin:0}}>{title}</h3>
+        <div style={{display:"flex",gap:8}}>
           {displayText&&<CopyBtn text={displayText}/>}
           {downloadHref&&(
-            <a href={downloadHref} download className="text-xs px-3 py-1 rounded font-semibold" style={{background:color,color:"#fff"}}>
-              ⬇ {downloadLabel}
+            <a href={downloadHref} download className="btn-pro"
+              style={{fontSize:11,fontWeight:700,padding:"4px 14px",background:color,
+                color:"#fff",textDecoration:"none",letterSpacing:"0.04em"}}>
+              ↓ {downloadLabel}
             </a>
           )}
         </div>
       </div>
-      <div className="px-5 py-4 text-sm whitespace-pre-wrap" style={{color:"#cbd5e1",lineHeight:1.75}}>
+      <div style={{padding:"18px 20px",fontSize:13,color:"#64748b",lineHeight:1.85,
+        whiteSpace:"pre-wrap",fontFamily:"'Space Grotesk',sans-serif",fontWeight:400}}>
         {displayText}
       </div>
-      {note&&<p className="px-5 pb-3 text-xs" style={{color:"#475569"}}>{note}</p>}
+      {note&&<p style={{padding:"0 20px 12px",fontSize:11,color:"#1e293b",
+        fontFamily:"'Space Grotesk',sans-serif"}}>{note}</p>}
     </div>
   );
 }
@@ -594,6 +2091,7 @@ function ResumeBuilder({profile}) {
     setLoading(false);
     if(res.error){setError(res.error);return;}
     setResult(res);
+    if(window.fireConfetti) window.fireConfetti();
   };
 
   const resumeText    = result?ResumePreview({data:result.resume}):"";
@@ -601,25 +2099,27 @@ function ResumeBuilder({profile}) {
   const connectLen    = result?.linkedin_connect?.length||0;
 
   return (
-    <div className="max-w-3xl mx-auto pt-10 px-4">
-      <h2 className="text-2xl font-bold mb-1">Resume Builder</h2>
-      <p className="text-sm mb-5" style={{color:"#94a3b8"}}>
-        Paste any job description — get an ATS-optimized resume, cover letter, cold email & two LinkedIn messages. <strong style={{color:"#22c55e"}}>Zero fabrication</strong> — only your real experience, reframed to match.
-      </p>
+    <div className="tab-enter">
+    <SectionHero tab="Resume"/>
+    <div className="max-w-3xl mx-auto pt-8 px-4">
 
       {!profile&&<InfoBox msg="Upload your CV first so Claude knows your real background."/>}
 
-      <div className="rounded-xl p-4 mb-5" style={{background:"#1e293b"}}>
-        <label className="text-xs font-semibold uppercase tracking-wider block mb-2" style={{color:"#64748b"}}>Paste Job Description</label>
+      <div className="panel-glass p-5 mb-5">
+        <p className="sec-label mb-3">Job Description</p>
         <textarea
-          className="w-full rounded-lg px-3 py-3 text-sm resize-none"
-          style={{background:"#0f172a",border:"1px solid #334155",color:"#f1f5f9",minHeight:200,lineHeight:1.6}}
-          placeholder="Paste the full job description here — the more detail, the better the ATS match…"
+          className="input-pro w-full px-4 py-3 resize-none"
+          style={{minHeight:200,lineHeight:1.75,borderRadius:12,display:"block"}}
+          placeholder="Paste the full job description — the more detail, the better your ATS match score…"
           value={jd} onChange={e=>setJd(e.target.value)}/>
         <button onClick={generate} disabled={loading}
-          className="w-full mt-3 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
-          style={{background:loading?"#334155":"#22c55e",color:"#fff"}}>
-          {loading?<><Spinner/> Claude is crafting your documents…</>:"✨ Generate Resume + Cover Letter + Email + LinkedIn"}
+          className="btn-pro w-full mt-4 py-3 flex items-center justify-center gap-2"
+          style={{background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+            color:loading?"#475569":"#fff",border:"none",fontSize:13}}>
+          {loading
+            ? <><Spinner/><span>Claude is crafting your documents…</span></>
+            : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg><span>Generate Resume · Cover Letter · Email · LinkedIn</span></>
+          }
         </button>
       </div>
 
@@ -627,37 +2127,48 @@ function ResumeBuilder({profile}) {
 
       {result && <>
         {/* ATS Score */}
-        <div className="rounded-xl p-4 mb-4 flex items-center gap-4" style={{background:"#052e16"}}>
-          <div className="text-4xl font-black" style={{color:"#22c55e"}}>90–95%</div>
-          <div>
-            <p className="font-semibold" style={{color:"#22c55e"}}>Estimated ATS Match Score</p>
-            {kws.length>0&&<p className="text-xs mt-1" style={{color:"#4ade80"}}>Keywords woven in: {kws.slice(0,10).join(", ")}</p>}
+        <div style={{borderRadius:14,padding:"20px 22px",marginBottom:16,
+          background:"rgba(6,12,32,0.90)",border:"1px solid rgba(91,141,254,0.18)",
+          borderLeft:"3px solid #5b8dfe",display:"flex",alignItems:"center",gap:20}}>
+          <div style={{flexShrink:0}}>
+            <p className="sec-label" style={{marginBottom:4}}>ATS Match</p>
+            <p style={{fontSize:"2.4rem",fontWeight:800,color:"#a0c4ff",
+              letterSpacing:"-0.04em",lineHeight:1,fontFamily:"'Space Grotesk',sans-serif"}}>90–95%</p>
+          </div>
+          <div style={{borderLeft:"1px solid rgba(91,141,254,0.15)",paddingLeft:20}}>
+            <p style={{fontSize:13,fontWeight:600,color:"#a0c4ff",marginBottom:6,
+              fontFamily:"'Space Grotesk',sans-serif"}}>Optimized for this role</p>
+            {kws.length>0&&<p style={{fontSize:12,color:"rgba(255,180,255,0.55)",lineHeight:1.6,
+              fontFamily:"'Space Grotesk',sans-serif"}}>
+              Keywords: {kws.slice(0,10).join(" · ")}
+            </p>}
           </div>
         </div>
 
         {/* Resume */}
-        <DocCard title="📄 ATS-Optimized Resume" color="#22c55e"
+        <DocCard title="ATS-Optimized Resume" color="#5b8dfe"
           content={resumeText}
           downloadHref="/api/resume/download/resume" downloadLabel="Download PDF"/>
 
         {/* Cover Letter */}
-        <DocCard title="✉ Professional Cover Letter" color="#3b82f6"
+        <DocCard title="Professional Cover Letter" color="#3b82f6"
           content={result.cover_letter}
           downloadHref="/api/resume/download/cover" downloadLabel="Download PDF"/>
 
         {/* Cold Email */}
-        <DocCard title="📧 Cold Outreach Email" color="#f59e0b"
+        <DocCard title="Cold Outreach Email" color="#f59e0b"
           content={result.cold_email}/>
 
         {/* LinkedIn Connection Note */}
-        <DocCard title="🔗 LinkedIn Connection Request Note" color="#8b5cf6"
+        <DocCard title="LinkedIn Connection Request Note" color="#8b5cf6"
           content={result.linkedin_connect}
           note={`${connectLen}/300 characters`}/>
 
         {/* LinkedIn Outreach Message */}
-        <DocCard title="💼 LinkedIn Outreach Message" color="#06b6d4"
+        <DocCard title="LinkedIn Outreach Message" color="#06b6d4"
           content={result.linkedin_msg}/>
       </>}
+    </div>
     </div>
   );
 }
@@ -668,8 +2179,27 @@ function SettingsModal({onClose}) {
   const [apKey,setApKey]   = useState("");
   const [status,setStatus] = useState(null);
   const [keyInfo,setKeyInfo] = useState({});
+  const [confirmReset,setConfirmReset] = useState(false);
+  const [resetting,setResetting]       = useState(false);
+  const [testing,setTesting]           = useState(false);
+  const [testRes,setTestRes]           = useState(null);
 
-  useEffect(()=>{api.get("/api/settings").then(r=>{if(!r.error)setKeyInfo(r);});});
+  useEffect(()=>{api.get("/api/settings").then(r=>{if(!r.error)setKeyInfo(r);});},[]);
+
+  const testKeys = async () => {
+    setTesting(true); setTestRes(null);
+    const r = await api.post("/api/test-keys",{});
+    setTesting(false);
+    setTestRes(r.error ? {anthropic:{ok:false,detail:r.error},apify:{ok:false,detail:r.error}} : r);
+  };
+
+  const doReset = async () => {
+    setResetting(true);
+    const r = await api.post("/api/reset",{});
+    setResetting(false);
+    if(r.error){ setStatus({type:"error",msg:r.error}); setConfirmReset(false); return; }
+    window.location.reload();   // reload → app boots completely fresh
+  };
 
   const save = async () => {
     const res = await api.post("/api/settings",{anthropic_key:aKey||undefined,apify_key:apKey||undefined});
@@ -691,7 +2221,7 @@ function SettingsModal({onClose}) {
         ].map(({label,val,set,hint,placeholder,set_key})=>(
           <div key={label} className="mb-4">
             <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{color:"#64748b"}}>
-              {label} {keyInfo[set_key]&&<span style={{color:"#22c55e"}}>✓ saved</span>}
+              {label} {keyInfo[set_key]&&<span style={{color:"#a0c4ff"}}>✓ saved</span>}
             </label>
             <input type="password"
               className="w-full rounded-lg px-3 py-2 text-sm"
@@ -705,34 +2235,1015 @@ function SettingsModal({onClose}) {
         {status&&<div className={`rounded-lg px-4 py-2 mb-4 text-sm ${status.type==="ok"?"text-green-300":"text-red-300"}`}
           style={{background:status.type==="ok"?"#052e16":"#450a0a"}}>{status.msg}</div>}
 
-        <button onClick={save} className="w-full py-2 rounded-lg font-semibold text-sm" style={{background:"#22c55e",color:"#fff"}}>Save Keys</button>
+        <button onClick={save} className="btn-pro w-full py-2" style={{background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:"#fff",border:"none",fontSize:13}}>Save Keys</button>
+
+        {/* Live key verification */}
+        <button onClick={testKeys} disabled={testing}
+          className="w-full py-2 mt-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+          style={{background:"rgba(91,141,254,0.08)",border:"1px solid rgba(91,141,254,0.3)",
+            color:"#93c5fd",cursor:"pointer"}}>
+          {testing ? <><Spinner size={13}/> Testing both keys…</> : "Test Connections"}
+        </button>
+        {testRes && (
+          <div className="mt-3" style={{display:"flex",flexDirection:"column",gap:6}}>
+            {[["anthropic","Anthropic (AI scoring & resumes)"],["apify","Apify (job scraping)"]].map(([k,label])=>{
+              const r = testRes[k]||{};
+              return (
+                <div key={k} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 12px",
+                  borderRadius:9,fontSize:12,
+                  background:r.ok?"rgba(5,46,22,0.6)":"rgba(69,10,10,0.6)",
+                  border:`1px solid ${r.ok?"rgba(34,197,94,0.25)":"rgba(239,68,68,0.25)"}`,
+                  color:r.ok?"#86efac":"#fca5a5"}}>
+                  <span style={{fontWeight:800,flexShrink:0}}>{r.ok?"✓":"✕"}</span>
+                  <span><strong>{label}:</strong> {r.detail}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Danger zone — Start Fresh */}
+        <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{color:"#7f1d1d"}}>Danger zone</p>
+          {!confirmReset ? (
+            <button onClick={()=>setConfirmReset(true)}
+              className="w-full py-2 rounded-lg text-sm font-semibold"
+              style={{background:"rgba(127,29,29,0.15)",border:"1px solid rgba(239,68,68,0.25)",color:"#f87171",cursor:"pointer"}}>
+              Start Fresh — erase all data
+            </button>
+          ) : (
+            <div>
+              <p className="text-xs mb-2" style={{color:"#fca5a5"}}>This permanently deletes your resume, all jobs, and tracker history. Are you sure?</p>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={doReset} disabled={resetting}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold"
+                  style={{background:"#7f1d1d",border:"none",color:"#fff",cursor:"pointer"}}>
+                  {resetting?"Erasing…":"Yes, erase everything"}
+                </button>
+                <button onClick={()=>setConfirmReset(false)}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold"
+                  style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",color:"#94a3b8",cursor:"pointer"}}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Skill Gap Analyzer ── */
+function SkillGapAnalyzer({profile}) {
+  const [jd,setJd]         = React.useState('');
+  const [loading,setLoad]  = React.useState(false);
+  const [result,setResult] = React.useState(null);
+  const [error,setError]   = React.useState('');
+
+  async function analyze() {
+    if (!jd.trim()) { setError('Paste a job description first.'); return; }
+    setLoad(true); setError(''); setResult(null);
+    try {
+      const d = await api.post('/api/skill-gap',{jd});
+      if (d.error) throw new Error(d.error);
+      setResult(d);
+    } catch(e){ setError(e.message); }
+    setLoad(false);
+  }
+
+  const scoreColor = s => s>=75?'#22c55e':s>=50?'#f59e0b':'#ef4444';
+  const priColor   = p => p==='Critical'?'#ef4444':p==='Important'?'#f59e0b':'#64748b';
+
+  return (
+    <div className="tab-enter">
+    <SectionHero tab="Skill Gap"/>
+    <div className="p-6 max-w-5xl mx-auto" style={{paddingTop:24}}>
+
+      {!profile && (
+        <div className="panel-glass rounded-lg p-4 mb-4" style={{borderColor:"rgba(255,200,0,0.4)"}}>
+          <span style={{color:'#f59e0b'}}>⚠ Upload your CV first on the Upload CV tab.</span>
+        </div>
+      )}
+
+      <div className="panel-glass mb-5" style={{padding:20,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+        <label className="sec-label" style={{display:"block",marginBottom:10}}>Job Description</label>
+        <textarea
+          rows={8}
+          value={jd}
+          onChange={e=>setJd(e.target.value)}
+          placeholder="Paste the full job description here..."
+          className="input-pro w-full rounded-lg p-3 text-sm resize-none outline-none"
+          style={{lineHeight:1.7}}
+        />
+        <button
+          onClick={analyze}
+          disabled={loading||!profile}
+          className="btn-pro w-full mt-3 py-2.5 text-sm flex items-center justify-center gap-2"
+          style={{background:loading||!profile?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:loading||!profile?"#475569":"#fff",
+            border:loading||!profile?"1px solid rgba(255,255,255,0.06)":"none",
+            cursor:loading||!profile?"not-allowed":"pointer"}}
+        >
+          {loading
+            ? <><span className="spinner" style={{marginRight:6}}/>Analyzing gaps…</>
+            : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",verticalAlign:"middle",marginRight:6}}><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>Analyze Skill Gaps</>}
+        </button>
+        {error && <p style={{marginTop:8,fontSize:13,color:"#ef4444"}}>{error}</p>}
+      </div>
+
+      {result && (
+        <div>
+          {/* Match Score */}
+          <div className="panel-glass mb-5" style={{padding:20,display:"flex",alignItems:"center",gap:20,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${scoreColor(result.match_score)},transparent)`}}/>
+            <div style={{position:"relative",flexShrink:0,width:84,height:84}}>
+              <svg width={84} height={84} style={{position:"absolute",top:0,left:0,transform:"rotate(-90deg)"}}>
+                <circle cx={42} cy={42} r={35} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={5}/>
+                <circle cx={42} cy={42} r={35} fill="none" stroke={scoreColor(result.match_score)} strokeWidth={5}
+                  strokeDasharray={2*Math.PI*35} strokeDashoffset={2*Math.PI*35*(1-result.match_score/100)}
+                  strokeLinecap="round" className="score-reveal"/>
+              </svg>
+              <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                <span style={{fontSize:"1.3rem",fontWeight:800,color:scoreColor(result.match_score),letterSpacing:"-0.04em",lineHeight:1,fontFamily:"'Space Grotesk',sans-serif"}}>{result.match_score}</span>
+                <span style={{fontSize:9,color:"rgba(255,255,255,0.2)",letterSpacing:"0.06em",fontFamily:"'Space Grotesk',sans-serif"}}>%</span>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:"1.1rem",fontWeight:800,marginBottom:6,color:scoreColor(result.match_score),fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.02em"}}>{result.match_label}</div>
+              <p style={{fontSize:13,lineHeight:1.75,color:"#64748b",fontFamily:"'Space Grotesk',sans-serif"}}>{result.motivation}</p>
+            </div>
+          </div>
+
+          {/* Three skill columns */}
+          <div className="grid grid-cols-3 gap-4 mb-5" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+            {/* Strong */}
+            <div className="panel-glass" style={{padding:16,borderLeft:"2px solid rgba(34,197,94,0.4)"}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:12,display:"flex",alignItems:"center",gap:6,color:"#22c55e",fontFamily:"'Space Grotesk',sans-serif"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg>
+                Strong <span style={{marginLeft:"auto",fontSize:11,fontWeight:800,color:"#22c55e"}}>{result.strong_skills?.length||0}</span>
+              </div>
+              {(result.strong_skills||[]).map((s,i)=>(
+                <div key={i} style={{fontSize:11,padding:"4px 10px",borderRadius:6,marginBottom:5,background:"rgba(34,197,94,0.08)",color:"#4ade80",border:"1px solid rgba(34,197,94,0.12)",fontFamily:"'Space Grotesk',sans-serif",fontWeight:500}}>{s}</div>
+              ))}
+            </div>
+            {/* Partial */}
+            <div className="panel-glass" style={{padding:16,borderLeft:"2px solid rgba(245,158,11,0.4)"}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:12,display:"flex",alignItems:"center",gap:6,color:"#f59e0b",fontFamily:"'Space Grotesk',sans-serif"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Needs Work <span style={{marginLeft:"auto",fontSize:11,fontWeight:800,color:"#f59e0b"}}>{result.partial_skills?.length||0}</span>
+              </div>
+              {(result.partial_skills||[]).map((s,i)=>(
+                <div key={i} style={{borderRadius:8,padding:"8px 10px",marginBottom:6,background:"rgba(245,158,11,0.05)",border:"1px solid rgba(245,158,11,0.12)"}}>
+                  <div style={{fontSize:11,fontWeight:700,marginBottom:3,color:"#fbbf24",fontFamily:"'Space Grotesk',sans-serif"}}>{s.skill}</div>
+                  <div style={{fontSize:11,color:"#78716c",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif"}}>{s.gap}</div>
+                </div>
+              ))}
+            </div>
+            {/* Missing */}
+            <div className="panel-glass" style={{padding:16,borderLeft:"2px solid rgba(239,68,68,0.4)"}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:12,display:"flex",alignItems:"center",gap:6,color:"#ef4444",fontFamily:"'Space Grotesk',sans-serif"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Missing <span style={{marginLeft:"auto",fontSize:11,fontWeight:800,color:"#ef4444"}}>{result.missing_skills?.length||0}</span>
+              </div>
+              {(result.missing_skills||[]).map((s,i)=>(
+                <div key={i} style={{borderRadius:8,padding:"8px 10px",marginBottom:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.12)"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#fca5a5",fontFamily:"'Space Grotesk',sans-serif"}}>{s.skill}</span>
+                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:priColor(s.priority),color:"#fff",letterSpacing:"0.04em"}}>{s.priority}</span>
+                  </div>
+                  <div style={{fontSize:11,color:"#78716c",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif"}}>{s.why}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Wins */}
+          {result.quick_wins?.length > 0 && (
+            <div className="panel-glass mb-5" style={{padding:16,borderLeft:"2px solid rgba(96,165,250,0.5)"}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:12,display:"flex",alignItems:"center",gap:6,color:"#60a5fa",fontFamily:"'Space Grotesk',sans-serif"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Quick Wins — Start Today
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {result.quick_wins.map((w,i)=>(
+                  <div key={i} style={{fontSize:11,padding:"5px 12px",borderRadius:8,background:"rgba(59,130,246,0.08)",color:"#93c5fd",border:"1px solid rgba(59,130,246,0.15)",fontFamily:"'Space Grotesk',sans-serif",fontWeight:500}}>{w}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Roadmap */}
+          <div className="panel-glass" style={{padding:20,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:16,color:"#f1f5f9",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.01em"}}>Your Learning Roadmap</div>
+            <div className="flex flex-col gap-4">
+              {(result.roadmap||[]).map((phase,i)=>(
+                <div key={i} style={{borderRadius:10,padding:"14px 16px",background:"rgba(3,7,14,0.6)",border:"1px solid rgba(255,255,255,0.06)",borderLeft:`3px solid rgba(34,197,94,${0.6-i*0.15})`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0,fontFamily:"'Space Grotesk',sans-serif"}}>{i+1}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:"#22c55e",fontFamily:"'Space Grotesk',sans-serif"}}>{phase.phase}</div>
+                  </div>
+                  <div style={{fontSize:11,color:"#475569",marginBottom:10,fontFamily:"'Space Grotesk',sans-serif",lineHeight:1.5}}>{phase.goal}</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#334155",marginBottom:6,fontFamily:"'Space Grotesk',sans-serif"}}>Actions</div>
+                      {(phase.actions||[]).map((a,j)=>(
+                        <div key={j} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:5}}>
+                          <span style={{color:"#22c55e",fontSize:9,marginTop:2,flexShrink:0}}>▸</span>
+                          <span style={{fontSize:11,color:"#94a3b8",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif"}}>{a}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#334155",marginBottom:6,fontFamily:"'Space Grotesk',sans-serif"}}>Resources</div>
+                      {(phase.resources||[]).map((r,j)=>(
+                        <div key={j} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:5}}>
+                          <span style={{color:"#60a5fa",fontSize:10,marginTop:1,flexShrink:0}}>◈</span>
+                          <span style={{fontSize:11,color:"#7dd3fc",lineHeight:1.5,fontFamily:"'Space Grotesk',sans-serif"}}>{r}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+    </div>
+  );
+}
+
+/* ── Interview Prep Tab ── */
+const Q_TYPE_COLOR = {behavioral:"#3b82f6",technical:"#8b5cf6","role-specific":"#22c55e",situational:"#f59e0b"};
+const Q_DIFF_COLOR = {easy:"#22c55e",medium:"#f59e0b",hard:"#ef4444"};
+
+function InterviewPrep({profile}) {
+  const [jd,setJd]             = useState("");
+  const [loading,setLoading]   = useState(false);
+  const [result,setResult]     = useState(null);
+  const [error,setError]       = useState("");
+  const [expanded,setExpanded] = useState(null);
+  // Salary estimator state
+  const [salJd,setSalJd]       = useState("");
+  const [salLoading,setSalLoading] = useState(false);
+  const [salary,setSalary]     = useState(null);
+  const [salError,setSalError] = useState("");
+
+  const generate = async () => {
+    if(!jd.trim()){setError("Paste a job description first.");return;}
+    if(!profile){setError("Upload your CV first.");return;}
+    setLoading(true); setError(""); setResult(null); setExpanded(null);
+    const r = await api.post("/api/interview-prep",{jd});
+    setLoading(false);
+    if(r.error){setError(r.error);return;}
+    setResult(r);
+  };
+
+  const estimateSalary = async () => {
+    const jdText = (salJd||jd).trim();
+    if(!jdText){setSalError("Paste a job description first.");return;}
+    setSalLoading(true); setSalError(""); setSalary(null);
+    const r = await api.post("/api/salary-estimate",{jd:jdText});
+    setSalLoading(false);
+    if(r.error){setSalError(r.error);return;}
+    setSalary(r);
+  };
+
+  const fmt = n => n?`$${Math.round(n/1000)}k`:"—";
+
+  return (
+    <div className="tab-enter">
+    <SectionHero tab="Interview"/>
+    <div className="max-w-3xl mx-auto pt-8 px-4">
+
+      {!profile && <InfoBox msg="Upload your CV first for personalised question hints."/>}
+
+      {/* JD input */}
+      <div className="panel-glass mb-5" style={{padding:20,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+        <label className="sec-label" style={{display:"block",marginBottom:10}}>Job Description</label>
+        <textarea value={jd} onChange={e=>setJd(e.target.value)}
+          className="input-pro w-full rounded-lg px-3 py-3 text-sm resize-none"
+          style={{minHeight:180,lineHeight:1.7}}
+          placeholder="Paste the full job description…"/>
+        <button onClick={generate} disabled={loading}
+          className="btn-pro w-full mt-3 py-2.5 text-sm flex items-center justify-center gap-2"
+          style={{background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:loading?"#475569":"#fff",
+            border:loading?"1px solid rgba(255,255,255,0.06)":"none"}}>
+          {loading
+            ? <><Spinner/> Claude is prepping your questions…</>
+            : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",marginRight:6,verticalAlign:"middle"}}><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>Generate Interview Questions</>
+          }
+        </button>
+      </div>
+      <ErrorBox msg={error}/>
+
+      {/* Results */}
+      {result && (
+        <div className="slide-down">
+          <div className="panel-glass mb-5" style={{padding:16,borderLeft:"2px solid rgba(139,92,246,0.5)",position:"relative",overflow:"hidden"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+              <p style={{fontWeight:700,fontSize:13,color:"#a5b4fc",fontFamily:"'Space Grotesk',sans-serif"}}>Ready for: {result.role_title}</p>
+            </div>
+            {result.quick_tips?.length>0 && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                {result.quick_tips.map((t,i)=>(
+                  <span key={i} style={{fontSize:11,padding:"3px 10px",borderRadius:6,background:"rgba(99,102,241,0.1)",color:"#c7d2fe",border:"1px solid rgba(99,102,241,0.15)",fontFamily:"'Space Grotesk',sans-serif"}}>{t}</span>
+                ))}
+              </div>
+            )}
+            {result.red_flags_to_address?.length>0 && (
+              <div>
+                <p style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"#ef4444",marginBottom:5,fontFamily:"'Space Grotesk',sans-serif"}}>Potential objections to prep for</p>
+                {result.red_flags_to_address.map((f,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:"#fca5a5",lineHeight:1.5,marginBottom:3,fontFamily:"'Space Grotesk',sans-serif"}}>
+                    <span style={{color:"#ef4444",flexShrink:0,marginTop:1}}>▸</span>{f}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {(result.questions||[]).map((q,i)=>(
+              <div key={i} className="panel-glass" style={{overflow:"hidden",transition:"box-shadow .2s"}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12,padding:16,cursor:"pointer"}} onClick={()=>setExpanded(expanded===i?null:i)}>
+                  <div style={{width:26,height:26,borderRadius:"50%",background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0,color:"#a5b4fc",fontFamily:"'Space Grotesk',sans-serif"}}>{i+1}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                      <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:Q_TYPE_COLOR[q.type]+"20",color:Q_TYPE_COLOR[q.type],fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"0.02em"}}>{q.type}</span>
+                      <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:Q_DIFF_COLOR[q.difficulty]+"18",color:Q_DIFF_COLOR[q.difficulty],fontFamily:"'Space Grotesk',sans-serif"}}>{q.difficulty}</span>
+                    </div>
+                    <p style={{fontSize:13,fontWeight:500,color:"#f1f5f9",lineHeight:1.65,fontFamily:"'Space Grotesk',sans-serif"}}>{q.question}</p>
+                  </div>
+                  <span style={{fontSize:10,flexShrink:0,marginTop:3,color:"#334155"}}>{expanded===i?"▲":"▼"}</span>
+                </div>
+                {expanded===i && (
+                  <div className="slide-down" style={{padding:"0 16px 16px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                    <div style={{marginTop:12,borderRadius:10,padding:12,background:"rgba(6,12,32,0.80)",borderLeft:"2px solid #5b8dfe"}}>
+                      <p style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"#8b5cf6",marginBottom:5,fontFamily:"'Space Grotesk',sans-serif"}}>Coaching Hint</p>
+                      <p style={{fontSize:12,color:"#94a3b8",lineHeight:1.75,fontFamily:"'Space Grotesk',sans-serif"}}>{q.hint}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Salary Estimator */}
+      <div className="panel-glass mt-8 mb-5" style={{padding:20,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,rgba(255,255,255,0.28) 0%,rgba(91,141,254,0.75) 30%,rgba(147,197,253,0.35) 65%,transparent 100%)"}}/>
+        <div style={{marginBottom:14}}>
+          <h3 style={{fontSize:"1rem",fontWeight:800,color:"#f1f5f9",marginBottom:4,fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.02em"}}>Salary Estimator</h3>
+          <p style={{fontSize:11,color:"#334155",fontFamily:"'Space Grotesk',sans-serif"}}>Know your worth before you negotiate. Estimates based on JD, your experience, and market data.</p>
+        </div>
+        {!jd.trim() && (
+          <textarea value={salJd} onChange={e=>setSalJd(e.target.value)}
+            className="input-pro w-full rounded-lg px-3 py-3 text-sm resize-none mb-3"
+            style={{minHeight:120,lineHeight:1.7}}
+            placeholder="Paste a job description (or use the one above)…"/>
+        )}
+        {jd.trim() && <div style={{borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#334155",background:"rgba(3,7,14,0.6)",border:"1px solid rgba(255,255,255,0.05)",fontFamily:"'Space Grotesk',sans-serif"}}>Using JD from above ↑</div>}
+        <button onClick={estimateSalary} disabled={salLoading}
+          className="btn-pro w-full py-2.5 text-sm flex items-center justify-center gap-2"
+          style={{background:salLoading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",color:salLoading?"#475569":"#fff",
+            border:salLoading?"1px solid rgba(255,255,255,0.06)":"none",fontWeight:700}}>
+          {salLoading
+            ? <><Spinner/> Estimating…</>
+            : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{display:"inline-block",verticalAlign:"middle",marginRight:6}}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Estimate Salary Range</>}
+        </button>
+        <ErrorBox msg={salError}/>
+        {salary && (
+          <div className="mt-4 slide-down">
+            <div style={{display:"flex",alignItems:"flex-end",gap:16,marginBottom:14,padding:"16px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+              <div style={{textAlign:"center",flex:1}}>
+                <p className="sec-label" style={{marginBottom:4}}>Min</p>
+                <p style={{fontSize:"1.5rem",fontWeight:900,color:"#ef4444",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(salary.min)}</p>
+              </div>
+              <div style={{textAlign:"center",flex:1.4}}>
+                <p className="sec-label" style={{marginBottom:4}}>Median</p>
+                <p style={{fontSize:"2.4rem",fontWeight:900,color:"#f59e0b",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.05em",lineHeight:1}}>{fmt(salary.median)}</p>
+                <p style={{fontSize:10,fontWeight:600,marginTop:6,padding:"2px 10px",borderRadius:20,display:"inline-block",background:"rgba(245,158,11,0.1)",color:"#f59e0b",fontFamily:"'Space Grotesk',sans-serif"}}>{salary.level} · {salary.location_factor}</p>
+              </div>
+              <div style={{textAlign:"center",flex:1}}>
+                <p className="sec-label" style={{marginBottom:4}}>Max</p>
+                <p style={{fontSize:"1.5rem",fontWeight:900,color:"#a0c4ff",fontFamily:"'Space Grotesk',sans-serif",letterSpacing:"-0.04em",lineHeight:1}}>{fmt(salary.max)}</p>
+              </div>
+            </div>
+            <div style={{borderRadius:10,padding:"12px 14px",marginBottom:12,background:"rgba(3,7,14,0.6)",border:"1px solid rgba(255,255,255,0.05)"}}>
+              <p style={{fontSize:12,color:"#64748b",lineHeight:1.75,fontFamily:"'Space Grotesk',sans-serif"}}>{salary.rationale}</p>
+            </div>
+            {salary.negotiation_tips?.length>0 && (
+              <div style={{borderRadius:10,padding:"12px 14px",background:"rgba(59,130,246,0.06)",border:"1px solid rgba(59,130,246,0.15)"}}>
+                <p style={{fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"#60a5fa",marginBottom:8,fontFamily:"'Space Grotesk',sans-serif"}}>Negotiation Tips</p>
+                {salary.negotiation_tips.map((t,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:6,fontSize:11,color:"#7dd3fc",lineHeight:1.6,marginBottom:4,fontFamily:"'Space Grotesk',sans-serif"}}>
+                    <span style={{color:"#60a5fa",flexShrink:0,marginTop:1}}>▸</span>{t}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+    </div>
+  );
+}
+
+/* ── Logo & Icon Components ── */
+function LogoMark({accent="#5b8dfe"}) {
+  return (
+    <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
+      {/* Outer pulse ring */}
+      <circle cx="17" cy="17" r="15.5" stroke={accent} strokeWidth="0.8" className="ring-pulse"/>
+      {/* Middle ring */}
+      <circle cx="17" cy="17" r="10.5" stroke={accent} strokeWidth="0.8" opacity="0.45"/>
+      {/* Inner ring */}
+      <circle cx="17" cy="17" r="5.5" stroke={accent} strokeWidth="0.8" opacity="0.65"/>
+      {/* Center dot */}
+      <circle cx="17" cy="17" r="2.2" fill={accent} opacity="0.95"/>
+      {/* Rotating sweep */}
+      <g style={{transformOrigin:"17px 17px",animation:"radarSweep 4s linear infinite"}}>
+        <line x1="17" y1="17" x2="31" y2="9.5" stroke={accent} strokeWidth="1.3" strokeLinecap="round" opacity="0.9"/>
+        <path d="M17 17 L31 9.5 A15.5 15.5 0 0 0 17 1.5 Z" fill={accent} opacity="0.06"/>
+      </g>
+      {/* Blip dot */}
+      <circle cx="26" cy="10.5" r="2.2" fill={accent} className="radar-blip"/>
+      <circle cx="26" cy="10.5" r="1.2" fill={accent} opacity="0.6" className="radar-blip"/>
+    </svg>
+  );
+}
+
+function TabIcon({tab, active, color, size=14}) {
+  const c = active ? color : "#4b5563";
+  const s = {stroke:c, strokeWidth:1.7, strokeLinecap:"round", strokeLinejoin:"round", fill:"none", display:"block"};
+  const v = "0 0 24 24";
+  if(tab==="Upload CV") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  );
+  if(tab==="Job Feed") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <circle cx="11" cy="11" r="8"/>
+      <path d="M21 21l-4.35-4.35"/>
+    </svg>
+  );
+  if(tab==="Screening") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/>
+    </svg>
+  );
+  if(tab==="Tracker") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <rect x="3" y="3" width="4.5" height="18" rx="1" fill={active?`${color}20`:"none"}/>
+      <rect x="9.75" y="3" width="4.5" height="13" rx="1" fill={active?`${color}15`:"none"}/>
+      <rect x="16.5" y="3" width="4.5" height="9" rx="1" fill={active?`${color}10`:"none"}/>
+    </svg>
+  );
+  if(tab==="Dashboard") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <rect x="3" y="3" width="7" height="7" rx="1" fill={active?`${color}18`:"none"}/>
+      <rect x="14" y="3" width="7" height="7" rx="1" fill={active?`${color}18`:"none"}/>
+      <rect x="3" y="14" width="7" height="7" rx="1" fill={active?`${color}18`:"none"}/>
+      <rect x="14" y="14" width="7" height="7" rx="1" fill={active?`${color}18`:"none"}/>
+    </svg>
+  );
+  if(tab==="Resume") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="13" y1="17" x2="8" y2="17"/>
+    </svg>
+  );
+  if(tab==="Skill Gap") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+      <polyline points="16 7 22 7 22 13"/>
+    </svg>
+  );
+  if(tab==="Interview") return (
+    <svg width={size} height={size} viewBox={v} {...s}>
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      <line x1="9" y1="10" x2="15" y2="10"/>
+      <line x1="9" y1="14" x2="13" y2="14"/>
+    </svg>
+  );
+  return null;
+}
+
+/* ── Motivational Quotes ── */
+const QUOTES = [
+  { text: "Every rejection is a redirect — your right opportunity is still ahead.", author: "Stay the Course" },
+  { text: "The gap between where you are and where you want to be is called effort.", author: "Growth Mindset" },
+  { text: "You don't need every job. You just need the right one.", author: "Career Wisdom" },
+  { text: "One more application. One more skill. One more day closer.", author: "Keep Going" },
+  { text: "Skills are infinite. Limitations are temporary.", author: "Build Every Day" },
+  { text: "Confidence isn't 'I know everything.' It's 'I'll figure it out.'", author: "Embrace the Journey" },
+  { text: "The best time to learn that missing skill was yesterday. The second best time is now.", author: "Start Today" },
+  { text: "In a world of generalists, be the specialist they can't ignore.", author: "Stand Out" },
+  { text: "Hard times build strong engineers. Keep building.", author: "Resilience" },
+  { text: "Your next offer is already out there. Keep showing up.", author: "JobRadar" },
+  { text: "Don't count the rejections. Count the skills you've gained along the way.", author: "Progress Mindset" },
+  { text: "Every expert was once a beginner. Every pro was once an amateur.", author: "Career Wisdom" },
+  { text: "The interview you're scared of is the one that changes everything.", author: "Courage First" },
+  { text: "You are one conversation away from the opportunity of your life.", author: "Keep Reaching" },
+  { text: "Rejection is not the end. It's data — use it.", author: "Analytical Edge" },
+  { text: "The people who get hired are the ones who refused to stop applying.", author: "Persistence Wins" },
+  { text: "Every line of code, every project shipped — it's proof of who you are becoming.", author: "Builder's Creed" },
+  { text: "Show up prepared and you've already beaten half the competition.", author: "Prepared to Win" },
+  { text: "Your story isn't written yet. The next chapter starts with this application.", author: "Write Your Future" },
+  { text: "Doubt kills more dreams than failure ever will. Apply anyway.", author: "Override the Doubt" },
+  { text: "The market rewards those who invest in themselves every single day.", author: "Self-Investment" },
+  { text: "Not overqualified. Just saving your best for the right stage.", author: "Know Your Worth" },
+];
+
+/* TAB_ICONS replaced by TabIcon SVG component above */
+
+function QuoteBanner() {
+  const [idx,setIdx] = React.useState(()=>Math.floor(Math.random()*QUOTES.length));
+  const [fade,setFade] = React.useState(true);
+  React.useEffect(()=>{
+    const t = setInterval(()=>{
+      setFade(false);
+      setTimeout(()=>{ setIdx(i=>(i+1)%QUOTES.length); setFade(true); },400);
+    },8000);
+    return ()=>clearInterval(t);
+  },[]);
+  const q = QUOTES[idx];
+  return (
+    <div className="rounded-xl px-6 py-4 mb-6" style={{
+      background:"linear-gradient(135deg,#06102a 0%,#0a1840 50%,#060c1a 100%)",
+      border:"1px solid rgba(91,141,254,0.18)",
+      boxShadow:"0 0 30px rgba(91,141,254,0.06)",
+      opacity:fade?1:0,
+      transition:"opacity 0.4s ease"
+    }}>
+      <div className="flex items-start gap-3">
+        <span style={{color:"#5b8dfe",fontSize:"28px",lineHeight:1,marginTop:"-2px",opacity:0.7}}>"</span>
+        <div>
+          <p className="text-sm font-medium leading-relaxed" style={{color:"#e2e8f0"}}>{q.text}</p>
+          <p className="text-xs mt-1" style={{color:"#a0c4ff",opacity:0.8}}>— {q.author}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Hero Section ── */
+/* ── Screening Call Tab ── */
+function ScreeningCall({profile}) {
+  const [resume,setResume] = useState("");
+  const [jd,setJd]         = useState("");
+  const [loading,setLoad]  = useState(false);
+  const [error,setError]   = useState("");
+  const [data,setData]     = useState(null);
+  const [copied,setCopied] = useState("");
+
+  const copy = (key,text) => {
+    try{ navigator.clipboard.writeText(text); setCopied(key); setTimeout(()=>setCopied(""),1500); }catch{}
+  };
+
+  const generate = async () => {
+    if(!jd.trim()){ setError("Paste the job description on the right side first."); return; }
+    if(!resume.trim() && !profile){ setError("Paste your resume on the left side (or upload your CV first)."); return; }
+    setLoad(true); setError(""); setData(null);
+    const r = await api.post("/api/screening-script",{resume,jd});
+    setLoad(false);
+    if(r.error){ setError(r.error); return; }
+    setData(r);
+  };
+
+  const ta = {width:"100%",minHeight:260,resize:"vertical",fontSize:12.5,lineHeight:1.6,
+    padding:"14px 16px",borderRadius:12,background:"rgba(5,10,22,0.8)",
+    border:"1px solid rgba(255,255,255,0.09)",color:"#cbd5e1",outline:"none",
+    fontFamily:"'Space Grotesk',sans-serif"};
+
+  return (
+    <div className="tab-enter">
+    <SectionHero tab="Screening"/>
+    <div className="max-w-3xl mx-auto pt-8 px-4">
+
+      {/* Input panel: resume left, JD right */}
+      <div className="panel-glass p-5 mb-5">
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <p className="sec-label" style={{margin:0}}>Your resume</p>
+              {profile && (
+                <button onClick={()=>setResume(profile.raw_text||"")}
+                  style={{fontSize:10.5,fontWeight:700,padding:"3px 10px",borderRadius:99,cursor:"pointer",
+                    background:"rgba(91,141,254,0.12)",border:"1px solid rgba(91,141,254,0.35)",
+                    color:"#93c5fd",fontFamily:"'Space Grotesk',sans-serif"}}>
+                  Use my uploaded resume
+                </button>
+              )}
+            </div>
+            <textarea style={ta} placeholder="Paste your original resume here…"
+              value={resume} onChange={e=>setResume(e.target.value)}/>
+          </div>
+          <div>
+            <p className="sec-label" style={{marginBottom:8}}>Job description</p>
+            <textarea style={ta} placeholder="Paste the job description here…"
+              value={jd} onChange={e=>setJd(e.target.value)}/>
+          </div>
+        </div>
+
+        <button onClick={generate} disabled={loading}
+          className="btn-pro w-full py-3 mt-4 flex items-center justify-center gap-2"
+          style={{background:loading?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#1e4fd4,#5b8dfe)",
+            color:loading?"#475569":"#fff",border:"none",fontSize:13,fontWeight:800,letterSpacing:"0.03em"}}>
+          {loading
+            ? <><Spinner/><span>Building your confident script — takes ~30 seconds…</span></>
+            : <span>Build My Screening Script</span>}
+        </button>
+      </div>
+
+      <ErrorBox msg={error}/>
+
+      {data && (
+        <div className="tab-enter">
+
+          {/* Confidence boost */}
+          <div className="panel-glass p-6 mb-5" style={{borderLeft:"3px solid rgba(91,141,254,0.5)"}}>
+            <p className="sec-label" style={{marginBottom:8}}>You've got this</p>
+            <p style={{fontSize:15.5,fontWeight:600,lineHeight:1.7,margin:0,
+              background:"linear-gradient(135deg,#fff 40%,#5b8dfe 100%)",
+              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+              {data.confidence_boost}
+            </p>
+          </div>
+
+          {/* Opening pitch */}
+          <div className="panel-glass p-6 mb-5">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <p className="sec-label" style={{margin:0}}>Your 60-second opening pitch</p>
+              <button className="copy-btn" onClick={()=>copy("pitch",data.opening_pitch)}>{copied==="pitch"?"Copied ✓":"Copy"}</button>
+            </div>
+            <p style={{fontSize:14,color:"#cbd5e1",lineHeight:1.85,margin:0,whiteSpace:"pre-wrap"}}>{data.opening_pitch}</p>
+          </div>
+
+          {/* Alignment map */}
+          <div className="panel-glass p-6 mb-5">
+            <p className="sec-label" style={{marginBottom:4}}>Resume ↔ Job alignment map</p>
+            <p style={{fontSize:12,color:"#475569",marginBottom:16}}>Every requirement they care about — and your proof. Own these.</p>
+            {(data.alignment_map||[]).map((row,i)=>(
+              <div key={i} style={{padding:"14px 16px",borderRadius:12,marginBottom:10,
+                background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"#93c5fd",letterSpacing:"0.05em",
+                  textTransform:"uppercase",marginBottom:6,fontFamily:"'Space Grotesk',sans-serif"}}>
+                  They need: {row.jd_requirement}
+                </p>
+                <p style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.6,marginBottom:8}}>
+                  <strong style={{color:"#cbd5e1"}}>Your proof:</strong> {row.your_evidence}
+                </p>
+                <p style={{fontSize:13,color:"#e2e8f0",fontWeight:600,lineHeight:1.6,margin:0,
+                  padding:"8px 12px",borderRadius:8,background:"rgba(91,141,254,0.08)",
+                  borderLeft:"2px solid rgba(91,141,254,0.5)"}}>
+                  “{row.power_line}”
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Mock interview chat */}
+          <div className="panel-glass p-6 mb-5">
+            <p className="sec-label" style={{marginBottom:4}}>Practice mock screening call</p>
+            <p style={{fontSize:12,color:"#475569",marginBottom:18}}>Read your answers out loud — twice. Confidence comes from rehearsal.</p>
+            {(data.mock_interview||[]).map((ex,i)=>(
+              <div key={i} style={{marginBottom:18}}>
+                <div style={{display:"flex",gap:10,marginBottom:8}}>
+                  <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+                    background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",fontSize:11,fontWeight:800,color:"#94a3b8"}}>R</div>
+                  <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",
+                    borderRadius:"3px 14px 14px 14px",padding:"10px 14px",maxWidth:"85%"}}>
+                    <p style={{fontSize:13,color:"#94a3b8",fontWeight:600,margin:0,lineHeight:1.6}}>{ex.recruiter}</p>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginBottom:6}}>
+                  <div style={{background:"rgba(30,79,212,0.13)",border:"1px solid rgba(91,141,254,0.25)",
+                    borderRadius:"14px 3px 14px 14px",padding:"12px 15px",maxWidth:"85%"}}>
+                    <p style={{fontSize:13,color:"#dbeafe",margin:0,lineHeight:1.75,whiteSpace:"pre-wrap"}}>{ex.you}</p>
+                  </div>
+                  <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+                    background:"linear-gradient(135deg,#1e4fd4,#5b8dfe)",fontSize:11,fontWeight:800,color:"#fff"}}>You</div>
+                </div>
+                {ex.coach_tip && (
+                  <p style={{fontSize:11.5,color:"#64748b",margin:"0 40px 0 0",textAlign:"right",fontStyle:"italic"}}>
+                    Coach: {ex.coach_tip}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Questions to ask + power phrases */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:5}}>
+            <div className="panel-glass p-5">
+              <p className="sec-label" style={{marginBottom:12}}>Ask the recruiter</p>
+              {(data.questions_to_ask||[]).map((q,i)=>(
+                <p key={i} style={{fontSize:12.5,color:"#cbd5e1",lineHeight:1.6,marginBottom:10,
+                  paddingLeft:14,borderLeft:"2px solid rgba(91,141,254,0.4)"}}>{q}</p>
+              ))}
+            </div>
+            <div className="panel-glass p-5">
+              <p className="sec-label" style={{marginBottom:12}}>Power phrases</p>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                {(data.power_phrases||[]).map((p,i)=>(
+                  <span key={i} style={{fontSize:11.5,fontWeight:600,padding:"6px 12px",borderRadius:99,
+                    background:"rgba(91,141,254,0.1)",border:"1px solid rgba(91,141,254,0.3)",
+                    color:"#bfdbfe",fontFamily:"'Space Grotesk',sans-serif",lineHeight:1.4}}>“{p}”</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+    </div>
+  );
+}
+
+const HERO_DATA = {
+  "Upload CV":  {tag:"Foundation",    title:"Your career story starts here",           desc:"Drop your CV — Claude extracts every detail and powers every application you send.",          gradient:"linear-gradient(135deg,#06142e 0%,#060c1a 65%)",  accent:"#5b8dfe", scene:"mountain"},
+  "Job Feed":   {tag:"Live Listings", title:"Your dream job is out there",             desc:"Real postings scraped and scored against your CV the moment you search.",                     gradient:"linear-gradient(135deg,#060f2e 0%,#060c1a 65%)",  accent:"#3b82f6", scene:"network"},
+  "Tracker":    {tag:"Your Journey",  title:"Every application tells a story",         desc:"Track every step. Spot every pattern. Close every gap between you and the offer.",           gradient:"linear-gradient(135deg,#130828 0%,#060c1a 65%)",  accent:"#8b5cf6", scene:"kanban"},
+  "Dashboard":  {tag:"Mission Control",title:"Eyes on the prize",                      desc:"Real-time analytics, momentum scores, and insights to fuel your job search engine.",         gradient:"linear-gradient(135deg,#04081e 0%,#060c1a 65%)",  accent:"#60a5fa", scene:"cosmos"},
+  "Resume":     {tag:"ATS Optimized", title:"Craft the resume they can't ignore",      desc:"90–95% ATS match. Cover letter. Cold email. LinkedIn messages. All from one job description.",gradient:"linear-gradient(135deg,#1c0e00 0%,#060c1a 65%)",  accent:"#f59e0b", scene:"document"},
+  "Skill Gap":  {tag:"Grow Daily",    title:"Turn gaps into your greatest strengths",  desc:"Know exactly what to learn, why it matters, and where to start — mapped for you today.",   gradient:"linear-gradient(135deg,#001b10 0%,#060c1a 65%)",  accent:"#34d399", scene:"stairs"},
+  "Interview":  {tag:"Be Ready",      title:"Walk in like you own the room",           desc:"AI-generated questions, coaching hints, and salary benchmarks tailored to your background.", gradient:"linear-gradient(135deg,#200515 0%,#060c1a 65%)",  accent:"#f43f5e", scene:"spotlight"},
+  "Screening":  {tag:"Own The Call",  title:"Speak with unshakeable confidence",       desc:"Your resume + their job description = a word-for-word script that makes every screening call yours.", gradient:"linear-gradient(135deg,#001a20 0%,#060c1a 65%)", accent:"#22d3ee", scene:"spotlight"},
+};
+
+function HeroScene({scene,accent}) {
+  const mk = (seed) => {let s=seed; return ()=>{s=(s*9301+49297)%233280;return s/233280;};};
+  const rng = mk(42);
+  const stars = Array.from({length:60},()=>({cx:rng()*790+5,cy:rng()*140+5,r:rng()*1.3+0.3,op:rng()*0.45+0.15}));
+  const tw = Array.from({length:60},(_,i)=>i%5===0);
+
+  const Mountain = () => (
+    <>
+      <circle cx="640" cy="88" r="44" fill={accent} opacity="0.07"/>
+      <circle cx="640" cy="88" r="18" fill={accent} opacity="0.22"/>
+      {[0,30,60,90,120,150,180,210,240,270,300,330].map((d,i)=>(
+        <line key={i} x1="640" y1="88"
+          x2={640+Math.cos(d*Math.PI/180)*70} y2={88+Math.sin(d*Math.PI/180)*70}
+          stroke={accent} strokeWidth="1.2" opacity="0.10"/>
+      ))}
+      <polygon points="0,200 120,90 230,145 340,68 460,122 570,72 690,108 800,200" fill={accent} opacity="0.07"/>
+      <polygon points="0,200 80,120 190,158 300,100 420,142 520,94 640,118 740,95 800,200" fill={accent} opacity="0.045"/>
+      <rect x="0" y="180" width="800" height="20" fill={accent} opacity="0.04"/>
+    </>
+  );
+
+  const Network = () => {
+    const nodes = [{x:160,y:55},{x:400,y:38},{x:600,y:65},{x:680,y:118},{x:480,y:128},{x:280,y:108},{x:120,y:128}];
+    const edges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,0],[1,4],[5,2]];
+    const bldgs = [[40,50],[100,80],[145,60],[200,100],[280,70],[335,90],[520,76],[576,110],[645,64],[690,84],[750,56]];
+    return (
+      <>
+        {edges.map(([a,b],i)=><line key={i} x1={nodes[a].x} y1={nodes[a].y} x2={nodes[b].x} y2={nodes[b].y} stroke={accent} strokeWidth="0.8" opacity="0.18"/>)}
+        {nodes.map((n,i)=><circle key={i} cx={n.x} cy={n.y} r="5" fill={accent} opacity="0.38"/>)}
+        {bldgs.map(([x,h],i)=><rect key={i} x={x} y={200-h} width={30+i%3*8} height={h} fill={accent} opacity="0.05"/>)}
+      </>
+    );
+  };
+
+  const Kanban = () => (
+    <>
+      {[155,400,645].map((x,ci)=>(
+        <g key={ci}>
+          <rect x={x-62} y="18" width="124" height="168" rx="6" fill={accent} opacity="0.04" stroke={accent} strokeWidth="0.5" strokeOpacity="0.12"/>
+          {[0,1,2,3].map(ri=>(
+            <rect key={ri} x={x-56} y={32+ri*38} width={112} height={28} rx="4" fill={accent} opacity={0.07+ri*0.02+ci*0.015}/>
+          ))}
+        </g>
+      ))}
+    </>
+  );
+
+  const Cosmos = () => {
+    const cn = [[175,48],[320,34],[464,58],[560,28],[280,88],[656,68],[600,108]];
+    const ce = [[0,1],[1,2],[2,3],[0,4],[4,2],[3,5],[5,6],[6,2]];
+    return (
+      <>
+        {ce.map(([a,b],i)=><line key={i} x1={cn[a][0]} y1={cn[a][1]} x2={cn[b][0]} y2={cn[b][1]} stroke={accent} strokeWidth="0.6" opacity="0.2"/>)}
+        {cn.map(([x,y],i)=><circle key={i} cx={x} cy={y} r="3.5" fill={accent} opacity="0.42"/>)}
+        <circle cx="685" cy="145" r="32" fill={accent} opacity="0.06"/>
+        <circle cx="685" cy="145" r="18" fill={accent} opacity="0.10"/>
+        <circle cx="685" cy="145" r="8" fill={accent} opacity="0.18"/>
+      </>
+    );
+  };
+
+  const Document = () => (
+    <>
+      <rect x="492" y="14" width="178" height="172" rx="6" fill={accent} opacity="0.05" stroke={accent} strokeWidth="0.7" strokeOpacity="0.18"/>
+      {[0,1,2,3,4,5,6,7,8].map(i=>(
+        <rect key={i} x="508" y={26+i*18} width={i===0?124:i%2===0?98:112} height="8" rx="3" fill={accent} opacity={i===0?0.26:0.09}/>
+      ))}
+      {[0,1,2,3,4].map(i=>(
+        <rect key={i} x="38" y={38+i*26} width={72+i*18} height="6" rx="2" fill={accent} opacity="0.07"/>
+      ))}
+      <circle cx="580" cy="175" r="12" fill={accent} opacity="0.18"/>
+      <polyline points="572,175 578,181 588,168" fill="none" stroke={accent} strokeWidth="2" opacity="0.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </>
+  );
+
+  const Stairs = () => (
+    <>
+      {[0,1,2,3,4,5,6].map(i=>(
+        <rect key={i} x={72+i*90} y={162-i*20} width={90} height={i*20+28} rx="2" fill={accent} opacity={0.035+i*0.012}/>
+      ))}
+      {[1,2,3,4,5,6].map(i=>(
+        <rect key={i} x={72+i*90} y={162-i*20} width={90} height={6} rx="1" fill={accent} opacity={0.17+i*0.04}/>
+      ))}
+      <line x1="745" y1="135" x2="745" y2="55" stroke={accent} strokeWidth="2.5" opacity="0.28" strokeLinecap="round"/>
+      <polyline points="733,72 745,54 757,72" fill="none" stroke={accent} strokeWidth="2.5" opacity="0.32" strokeLinecap="round" strokeLinejoin="round"/>
+    </>
+  );
+
+  const Spotlight = () => (
+    <>
+      <ellipse cx="400" cy="192" rx="330" ry="18" fill={accent} opacity="0.06"/>
+      <polygon points="235,0 155,200 400,200" fill={accent} opacity="0.04"/>
+      <polygon points="400,0 275,200 525,200" fill={accent} opacity="0.07"/>
+      <polygon points="565,0 400,200 645,200" fill={accent} opacity="0.04"/>
+      <circle cx="235" cy="7" r="8" fill={accent} opacity="0.28"/>
+      <circle cx="400" cy="4" r="10" fill={accent} opacity="0.38"/>
+      <circle cx="565" cy="7" r="8" fill={accent} opacity="0.28"/>
+      <circle cx="400" cy="4" r="32" fill={accent} opacity="0.05"/>
+    </>
+  );
+
+  const sceneMap = {mountain:<Mountain/>,network:<Network/>,kanban:<Kanban/>,cosmos:<Cosmos/>,document:<Document/>,stairs:<Stairs/>,spotlight:<Spotlight/>};
+
+  return (
+    <svg viewBox="0 0 800 200" preserveAspectRatio="xMidYMid slice"
+      style={{position:"absolute",inset:0,width:"100%",height:"100%"}}>
+      {stars.map((s,i)=>(
+        <circle key={i} cx={s.cx} cy={s.cy} r={s.r} fill="white" opacity={s.op}
+          style={tw[i]?{animation:`heroTwinkle ${1.8+i%4*.4}s ease-in-out infinite`,animationDelay:`${i*.18}s`}:{}}/>
+      ))}
+      {sceneMap[scene]||null}
+    </svg>
+  );
+}
+
+function SectionHero({tab}) {
+  const h = HERO_DATA[tab];
+  if(!h) return null;
+  return (
+    <div className="tab-enter" style={{position:"relative",overflow:"hidden",background:h.gradient,padding:"54px 32px 70px",marginBottom:"-32px"}}>
+      {/* Atmospheric glow top-right */}
+      <div style={{position:"absolute",right:-60,top:-60,width:300,height:300,borderRadius:"50%",
+        background:`radial-gradient(circle,${h.accent}22 0%,transparent 65%)`,pointerEvents:"none"}}/>
+      {/* Bottom fade into page */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,height:72,
+        background:"linear-gradient(to bottom,transparent,#060c1a)",pointerEvents:"none"}}/>
+      {/* SVG art */}
+      <HeroScene scene={h.scene} accent={h.accent}/>
+      {/* Text content */}
+      <div style={{position:"relative",maxWidth:680,margin:"0 auto"}}>
+        <span style={{display:"inline-block",marginBottom:16,fontSize:10,fontWeight:700,
+          letterSpacing:"0.16em",textTransform:"uppercase",color:h.accent,
+          background:`${h.accent}14`,padding:"3px 12px",borderRadius:99,
+          border:`1px solid ${h.accent}28`}}>{h.tag}</span>
+        <h1 style={{
+          fontSize:"clamp(1.55rem,3.8vw,2.35rem)",fontWeight:900,lineHeight:1.18,
+          letterSpacing:"-0.025em",marginBottom:14,
+          background:`linear-gradient(140deg,#ffffff 25%,${h.accent} 100%)`,
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"
+        }}>{h.title}</h1>
+        <p style={{color:"#94a3b8",fontSize:14,lineHeight:1.78,maxWidth:510,margin:0}}>{h.desc}</p>
       </div>
     </div>
   );
 }
 
 /* ── Nav ── */
-const TABS = ["Upload CV","Job Feed","Tracker","Dashboard","Resume"];
+const TABS = ["Upload CV","Job Feed","Tracker","Dashboard","Resume","Skill Gap","Interview","Screening"];
 
-function NavBar({tab,setTab,onSettings}) {
+function InterviewCountdown() {
+  const [nearest,setNearest] = useState(null);
+
+  useEffect(()=>{
+    const refresh = () => {
+      try{
+        const stored = JSON.parse(localStorage.getItem("jr_interview_dates")||"{}");
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        const upcoming = Object.entries(stored)
+          .map(([id,date])=>({id,dt:new Date(date)}))
+          .filter(({dt})=>dt>=todayStart)
+          .sort((a,b)=>a.dt-b.dt);
+        if(upcoming.length>0){
+          const diff = Math.ceil((upcoming[0].dt - todayStart)/86400000);
+          setNearest({diff, date:upcoming[0].dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})});
+        } else {
+          setNearest(null);
+        }
+      }catch{}
+    };
+    refresh();
+    const t = setInterval(refresh,30000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  if(!nearest) return null;
+  const color = nearest.diff===0?"#ef4444":nearest.diff<=2?"#f59e0b":"#22c55e";
+  const label = nearest.diff===0?"Interview TODAY":"Interview "+nearest.date;
   return (
-    <nav className="flex items-center px-6 py-3 border-b" style={{background:"#1e293b",borderColor:"#334155"}}>
-      <span className="text-lg font-bold mr-6" style={{color:"#f1f5f9"}}>Job<span style={{color:"#22c55e"}}>Radar</span></span>
-      <div className="flex gap-1 overflow-x-auto">
-        {TABS.map(t=>(
-          <button key={t} onClick={()=>setTab(t)}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap"
-            style={tab===t?{background:"#22c55e20",color:"#22c55e"}:{color:"#94a3b8"}}>
-            {t}
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold whitespace-nowrap"
+      style={{background:`${color}12`,border:`1px solid ${color}28`,color,animation:nearest.diff===0?"streakPop .8s ease infinite":"none"}}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>{label}</span>
+      {nearest.diff>0&&<span style={{opacity:0.7}}>({nearest.diff}d)</span>}
+    </div>
+  );
+}
+
+function NavBar({tab,setTab,onSettings,focusMode,onFocus}) {
+  const activeH = HERO_DATA[tab];
+  const activeAccent = activeH?.accent||"#5b8dfe";
+  return (
+    <nav style={{
+      background:"rgba(8,13,20,0.92)",
+      backdropFilter:"blur(24px) saturate(200%)",
+      WebkitBackdropFilter:"blur(24px) saturate(200%)",
+      borderBottom:"1px solid rgba(255,255,255,0.06)",
+      boxShadow:"0 1px 0 rgba(255,255,255,0.04),0 6px 40px rgba(0,0,0,0.6)",
+      position:"sticky",top:0,zIndex:50,
+    }}>
+      {/* Accent line across top */}
+      <div style={{height:"2px",background:`linear-gradient(90deg,transparent 0%,${activeAccent}60 40%,${activeAccent}90 50%,${activeAccent}60 60%,transparent 100%)`,transition:"background .5s ease"}}/>
+      <div className="flex items-center px-5 py-2.5">
+        {/* Logo */}
+        <div className="mr-6 shrink-0 flex items-center gap-2.5 logo-wrap" style={{cursor:"default"}}>
+          <LogoMark accent={activeAccent}/>
+          <div>
+            <div style={{lineHeight:1,letterSpacing:"-0.05em"}}>
+              <span style={{fontSize:"1.15rem",fontWeight:900,color:"#f1f5f9"}}>Job</span>
+              <span style={{fontSize:"1.15rem",fontWeight:900,color:activeAccent,textShadow:`0 0 32px ${activeAccent}70`,transition:"color .4s,text-shadow .4s"}}>Radar</span>
+            </div>
+            <div style={{fontSize:"8.5px",fontWeight:700,letterSpacing:"0.18em",color:"#334155",textTransform:"uppercase",marginTop:"2px"}}>AI · Job Search</div>
+          </div>
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-0.5 overflow-x-auto flex-1" style={{scrollbarWidth:"none"}}>
+          {TABS.map(t=>{
+            const active = tab===t;
+            const hd = HERO_DATA[t];
+            const acc = hd?.accent||"#5b8dfe";
+            return (
+              <button key={t} onClick={()=>setTab(t)}
+                className="px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-2"
+                style={active
+                  ? {background:`${acc}15`,color:acc,border:`1px solid ${acc}35`,
+                     boxShadow:`0 0 18px ${acc}20,inset 0 1px 0 ${acc}18`,
+                     transition:"all .25s"}
+                  : {color:"#4b5563",border:"1px solid transparent",
+                     transition:"all .25s"}}>
+                <TabIcon tab={t} active={active} color={acc} size={13}/>
+                <span>{t}</span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Right controls */}
+        <div className="flex items-center gap-2 ml-3 shrink-0">
+          <InterviewCountdown/>
+          <button onClick={onFocus} title={focusMode?"Exit Focus Mode":"Enter Focus Mode"}
+            className="p-2 rounded-xl"
+            style={{color:focusMode?"#a0c4ff":"#4b5563",
+              border:`1px solid ${focusMode?"rgba(91,141,254,0.28)":"rgba(255,255,255,0.07)"}`,
+              background:focusMode?"rgba(91,141,254,0.09)":"rgba(255,255,255,0.03)",
+              transition:"all .2s"}}>
+            {focusMode
+              ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+              : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg>
+            }
           </button>
-        ))}
+          <button onClick={onSettings} title="Settings"
+            className="p-2 rounded-xl"
+            style={{color:"#4b5563",border:"1px solid rgba(255,255,255,0.07)",background:"rgba(255,255,255,0.03)",transition:"all .2s"}}>
+            <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <button onClick={onSettings} className="ml-auto flex-shrink-0" style={{color:"#64748b"}} title="Settings">
-        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-        </svg>
-      </button>
     </nav>
   );
 }
@@ -743,26 +3254,47 @@ function App() {
   const [profile,setProfile]   = useState(null);
   const [jobs,setJobs]         = useState([]);
   const [showSettings,setShow] = useState(false);
+  const [focusMode,setFocus]   = useState(false);
 
   useEffect(()=>{
-    api.get("/api/profile").then(r=>{if(r.profile)setProfile(r.profile);});
-    api.get("/api/jobs").then(r=>{if(r.jobs)setJobs(r.jobs);});
+    const boot = async () => {
+      // New browser session → clear stale search results so the site opens fresh.
+      // sessionStorage survives reloads within a session but resets when the
+      // tab/browser is closed — exactly the "fresh on open" behaviour we want.
+      let isNewSession = false;
+      try{ isNewSession = !sessionStorage.getItem("jrSession"); }catch{}
+      if(isNewSession){
+        await api.post("/api/session-start",{});
+        try{ sessionStorage.setItem("jrSession","1"); }catch{}
+      }
+      api.get("/api/profile").then(r=>{if(r.profile)setProfile(r.profile);});
+      // Feed shows only live search results — tracked applications live in Tracker
+      api.get("/api/jobs").then(r=>{if(r.jobs)setJobs(r.jobs.filter(j=>j.status==="Saved"));});
+    };
+    boot();
   },[]);
+
+  useEffect(()=>{
+    document.body.classList.toggle("focus-mode", focusMode);
+  },[focusMode]);
 
   const refreshJobs = async () => {
     const r = await api.get("/api/jobs");
-    if(r.jobs) setJobs(r.jobs);
+    if(r.jobs) setJobs(r.jobs.filter(j=>j.status==="Saved"));
   };
 
   return (
     <>
-      <NavBar tab={tab} setTab={setTab} onSettings={()=>setShow(true)}/>
+      <NavBar tab={tab} setTab={setTab} onSettings={()=>setShow(true)} focusMode={focusMode} onFocus={()=>setFocus(f=>!f)}/>
       <main className="pb-16">
-        {tab==="Upload CV" && <UploadCV    profile={profile} onProfileUpdated={p=>{setProfile(p);}}/>}
-        {tab==="Job Feed"  && <JobFeed     profile={profile} jobs={jobs} onJobsUpdated={j=>{if(j)setJobs(j);else refreshJobs();}}/>}
-        {tab==="Tracker"   && <Tracker     jobs={jobs} onJobsUpdated={refreshJobs}/>}
-        {tab==="Dashboard" && <Dashboard   jobs={jobs}/>}
-        {tab==="Resume"    && <ResumeBuilder profile={profile}/>}
+        {tab==="Upload CV"  && <UploadCV      profile={profile} onProfileUpdated={p=>{setProfile(p);}} jobs={jobs} onNavigate={setTab}/>}
+        {tab==="Job Feed"   && <JobFeed       profile={profile} jobs={jobs} onJobsUpdated={j=>{if(j)setJobs(j);else refreshJobs();}}/>}
+        {tab==="Tracker"    && <Tracker       jobs={jobs} onJobsUpdated={refreshJobs}/>}
+        {tab==="Dashboard"  && <Dashboard     jobs={jobs} profile={profile}/>}
+        {tab==="Resume"     && <ResumeBuilder  profile={profile}/>}
+        {tab==="Skill Gap"  && <SkillGapAnalyzer profile={profile}/>}
+        {tab==="Interview"  && <InterviewPrep  profile={profile}/>}
+        {tab==="Screening"  && <ScreeningCall  profile={profile}/>}
       </main>
       {showSettings && <SettingsModal onClose={()=>setShow(false)}/>}
     </>
