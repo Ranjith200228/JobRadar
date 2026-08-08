@@ -12,6 +12,8 @@
 
 *Search jobs across every major board, get your resume tailored to each JD in seconds, and track your entire pipeline — all in one dark-mode app.*
 
+**9 integrated modules · 7 job boards unified into one search · 2 AI models routed by task · designed, built, and used solo, end-to-end**
+
 </div>
 
 ---
@@ -39,6 +41,14 @@
 
 ---
 
+## Why I Built This
+
+I built JobRadar while running my own job search as an IAM engineer, after realizing I was losing more time to copy-pasting job descriptions across a dozen browser tabs and reformatting the same resume than I was spending preparing for actual interviews. So I built the tool I wished existed — not a weekend script, but a real system: concurrent scraping, an AI content pipeline with model routing, pixel-precision PDF generation verified down to individual character positions, and a data layer that never loses your history.
+
+Every screenshot in this README is the live app, running on my own data. I'm still using it every day.
+
+---
+
 ## The Problem
 
 Job searching in 2026 is broken in a very specific way: the volume of applications you need to send to get an offer has gone up, while the time you have to make each one good has gone down.
@@ -50,9 +60,7 @@ Job searching in 2026 is broken in a very specific way: the volume of applicatio
 
 ## The Solution
 
-JobRadar is an end-to-end job search platform that replaces that whole fragmented workflow with one system: it searches for you, scores what it finds against your real background, rewrites your resume to match each role well enough to pass ATS *and* impress the human reading it next, and keeps the entire pipeline visible in one place so nothing falls through the cracks.
-
-It's built with Flask + Claude AI on the backend and a single-file React frontend, and it's the tool I use to run my own job search — the Dashboard and Tracker screenshots above are live data from applications I've actually sent.
+JobRadar is an end-to-end job search platform that replaces that whole fragmented workflow with one system: it searches for you, scores what it finds against your real background, rewrites your resume to match each role well enough to pass ATS *and* impress the human reading it next, and keeps the entire pipeline visible in one place so nothing falls through the cracks. Flask + Claude AI on the backend, a single-file React frontend — nine tools that all feed the same underlying profile instead of nine disconnected features.
 
 ---
 
@@ -208,10 +216,21 @@ Both keys can be entered through the app's settings panel (⚙ icon) without tou
 
 ---
 
+## What's Next
+
+JobRadar started as a tool to fix my own workflow, and the roadmap follows the same principle — solve the next real bottleneck, not the next feature that sounds impressive:
+
+- **Response-rate feedback loop** — track which resume phrasing and structure actually correlates with callbacks, and feed that back into generation instead of optimizing on ATS score alone
+- **One-click apply** — go from a scored Job Feed result to a submitted application without leaving the tab, once ATS field-mapping is reliable across boards
+- **Browser extension** — capture and score any job posting from LinkedIn, a company careers page, or anywhere else, without pasting the JD in manually
+- **Multi-user support** — move from a single local profile to real accounts, so this stops being just my tool
+
+---
+
 <div align="center">
 
-Built by [Ranjith Kumar Maddirala](https://github.com/Ranjith200228)
+Built solo — backend, frontend, AI pipeline, and PDF engine — by [Ranjith Kumar Maddirala](https://github.com/Ranjith200228)
 
-*AI Engineer · curious to build things that matter*
+*AI/IAM Engineer building the tools I wish existed*
 
 </div>
