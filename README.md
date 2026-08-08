@@ -43,7 +43,7 @@
 
 ## Why I Built This
 
-I built JobRadar while running my own job search as an IAM engineer, after realizing I was losing more time to copy-pasting job descriptions across a dozen browser tabs and reformatting the same resume than I was spending preparing for actual interviews. So I built the tool I wished existed — not a weekend script, but a real system: concurrent scraping, an AI content pipeline with model routing, pixel-precision PDF generation verified down to individual character positions, and a data layer that never loses your history.
+I built JobRadar while running my own job search, after realizing I was losing more time to copy-pasting job descriptions across a dozen browser tabs and reformatting the same resume than I was spending preparing for actual interviews. So instead of tolerating the busywork, I built the tool I wished existed — not a weekend script, but a real system: concurrent scraping, an AI content pipeline with model routing, pixel-precision PDF generation verified down to individual character positions, and a data layer that never loses your history.
 
 Every screenshot in this README is the live app, running on my own data. I'm still using it every day.
 
@@ -231,6 +231,6 @@ JobRadar started as a tool to fix my own workflow, and the roadmap follows the s
 
 Built solo — backend, frontend, AI pipeline, and PDF engine — by [Ranjith Kumar Maddirala](https://github.com/Ranjith200228)
 
-*AI/IAM Engineer building the tools I wish existed*
+*Engineer & builder — turning everyday problems into production-quality software*
 
 </div>
