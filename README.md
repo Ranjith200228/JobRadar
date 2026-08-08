@@ -39,39 +39,66 @@
 
 ---
 
-## What It Does
+## The Problem
 
-JobRadar is a personal job search command center built with Flask + Claude AI. Paste a job description and it instantly generates an impressive, ATS-friendly resume tailored to the role, plus a professional cover letter, cold outreach email, and two LinkedIn messages — all built from your real experience.
+Job searching in 2026 is broken in a very specific way: the volume of applications you need to send to get an offer has gone up, while the time you have to make each one good has gone down.
+
+- **ATS filters reject you before a human sees your resume** if it doesn't mirror the job description's language closely enough — but manually re-tailoring a resume for every posting takes 30–60 minutes, so most people either send one generic resume everywhere (and get auto-filtered) or burn out after a dozen applications.
+- **The search itself is fragmented** across LinkedIn, Indeed, Glassdoor, Wellfound, Dice, and more — each with its own filters, none of which know what's actually in your resume.
+- **Pipelines die in spreadsheets.** Once you're tracking 20+ applications across different stages, most people lose the thread on what's outstanding, what needs a follow-up, and what's working.
+- **Rejections are silent.** You rarely learn *why* you didn't advance, so the same gaps quietly repeat across every application.
+
+## The Solution
+
+JobRadar is an end-to-end job search platform that replaces that whole fragmented workflow with one system: it searches for you, scores what it finds against your real background, rewrites your resume to match each role well enough to pass ATS *and* impress the human reading it next, and keeps the entire pipeline visible in one place so nothing falls through the cracks.
+
+It's built with Flask + Claude AI on the backend and a single-file React frontend, and it's the tool I use to run my own job search — the Dashboard and Tracker screenshots above are live data from applications I've actually sent.
 
 ---
 
 ## Features
 
-**Job Feed**
-- Scrapes LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter, Wellfound, and Dice simultaneously via Apify
-- Smart 72-hour → 7-day auto-fallback so you always get results
-- Auto-scores every fetched job against your CV using Claude AI
+**Job Feed** — one search, every board
+- Scrapes LinkedIn, Indeed, Glassdoor, Google Jobs, ZipRecruiter, Wellfound, and Dice concurrently via Apify (parallelized with a thread pool instead of hitting each board sequentially)
+- Smart 72-hour → 7-day auto-fallback window so a narrow search never comes back empty
+- Every result is auto-scored against your real CV by Claude before you ever see it
 
-**Resume Builder**
-- Paste any JD → get a pixel-perfect ATS-optimized resume PDF in your exact layout
-- Professional cover letter PDF
-- Cold outreach email written in your own voice — no AI-sounding phrases
-- LinkedIn connection request note (300-char strict limit)
-- LinkedIn outreach message (InMail-ready, 200+ words)
-- Generates an impressive, ATS-friendly resume by reframing your real experience to match the role
+**Resume Generator & Resume Builder Pro** — the core engine
+- Paste any JD → get back an ATS-optimized resume (90–95% keyword match), a tailored cover letter, a cold outreach email, a LinkedIn connection note, and an InMail-ready LinkedIn message — from one job description
+- PDF layout is engineered for pixel-level precision: fixed-width table columns guarantee bullet and skills-list alignment survive text wrapping, margins and type scale are matched to a professional reference resume and verified character-by-character with PyMuPDF
+- The skills section is curated per role, not just appended to — the model actively drops irrelevant skills and surfaces the ones that actually matter for that JD instead of producing a bloated, unfocused list
+- Every summary opens on that candidate's single strongest, most specific credential instead of a repeating template — no two resumes read alike
+- Builder Pro runs the identical pipeline against any pasted resume + JD with no saved profile required
+
+**Skill Gap Analyzer**
+- Compares your real background against a target JD and maps exactly what to learn next, why it matters for that specific role, and where to start
+
+**Interview Prep & Screening Call Coach**
+- Generates likely interview questions and a screening-call script tailored to the specific role and company
 
 **Job Tracker**
-- Kanban board: Applied → Phone Screen → Interview → Offer → Rejected
-- Drag cards across columns to track your pipeline
-- Every job stores the match score, date posted, and source platform
+- Kanban board: Saved → Applied → Screening → Technical Interview → Offer → Rejected
+- Drag cards across stages; every card carries its match score, source platform, and date posted
 
 **Dashboard**
-- Live funnel chart showing your application pipeline
-- Syncs in real time as you move cards
+- Real-time funnel stats, response rate, and application streaks
+- A Claude-generated "Today's Mission" — a concrete daily action plan (not just "apply to more jobs") and a running Job Search Score that weights application volume, match quality, and response rate
 
 **Settings**
 - Paste your Anthropic and Apify API keys directly in the UI — no terminal config needed
 - Keys saved to a local `.env` file
+
+---
+
+## Engineering Highlights
+
+A few details that mattered more than they might look from the screenshots:
+
+- **Model routing for cost/latency, not just capability** — fast, cheap `claude-haiku-4-5` handles CV parsing, interview prep, and salary estimation; the heavier `claude-sonnet-4-6` is reserved for resume generation and skill-gap analysis, where reasoning quality actually changes the output.
+- **Concurrent scraping** — `fetch_jobs()` runs the multi-board, Wellfound, and Dice scrapers in parallel via `ThreadPoolExecutor` instead of sequentially, while still surfacing per-board failures (and propagating billing/quota errors immediately) without killing the whole search.
+- **Resilient LLM JSON parsing** — a lenient JSON repair layer recovers from truncated or malformed model output (closing dangling strings/brackets, trimming incomplete trailing elements) so a single flaky generation doesn't break the pipeline.
+- **PDF alignment engineering** — ReportLab's `TA_JUSTIFY` stretches inter-word spaces unpredictably, which breaks any hanging-indent approach to bullet/skills alignment. Fixed by rendering bullets and skills rows as fixed-width table cells instead of indented paragraphs, and verified with PyMuPDF's character-level `rawdict` bounding boxes rather than trusting it visually.
+- **Data-safety-first backend** — session boundaries only clear stale, unsaved search results; your CV profile, tracker history, and application data are never wiped by a new browser session or server restart.
 
 ---
 
@@ -132,12 +159,15 @@ Then open **http://localhost:5000** in your browser.
 ## Usage Flow
 
 ```
-1. Upload CV     →  drop your resume PDF — Claude parses it instantly
-2. Job Feed      →  enter role + location, select platforms, hit Fetch
-                    Claude auto-scores each result against your CV
-3. Resume Builder → paste any JD → get resume PDF + cover letter + emails
-4. Tracker       →  drag cards through your pipeline stages
-5. Dashboard     →  watch your funnel stats update live
+1. Upload CV        →  drop your resume PDF — Claude parses it instantly
+2. Job Feed         →  enter role + location, select platforms, hit Fetch
+                       Claude auto-scores each result against your CV
+3. Resume           →  paste any JD → get resume PDF + cover letter + emails
+4. Skill Gap        →  see what to learn before you apply
+5. Interview /
+   Screening        →  prep questions and a call script for the specific role
+6. Tracker          →  drag cards through your pipeline stages
+7. Dashboard        →  watch your funnel stats and daily mission update live
 ```
 
 ---
@@ -173,7 +203,7 @@ Both keys can be entered through the app's settings panel (⚙ icon) without tou
 
 - The SQLite database (`jobradar.db`) is created automatically on first run and is excluded from git
 - To start fresh, delete `jobradar.db` and restart the server
-- Job scraping calls are synchronous — large multi-platform searches can take 30–60 seconds
+- Job scraping runs each board's scraper concurrently, but a full multi-platform search can still take 30–60 seconds depending on Apify response times
 - All resume/cover letter PDFs are generated server-side and download directly from the browser
 
 ---
