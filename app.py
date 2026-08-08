@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import copy
 import threading
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -175,6 +176,57 @@ def _parse_lenient_json(text: str):
     raise ValueError("could not repair JSON")
 
 
+def _ai_json(client, model: str, system: str, user_content: str, max_tokens: int,
+             temperature: float = 0, retries: int = 1, required_keys=None) -> dict:
+    """Call the Anthropic API expecting a JSON object response, hardened against
+    the model drifting into a conversational preamble instead of pure JSON.
+
+    NOTE: assistant-message prefill (seeding the reply with "{") would be the
+    strongest way to force this, but this account's models reject it outright
+    ("invalid_request_error: this model does not support assistant message
+    prefill — the conversation must end with a user message"), so we can't
+    rely on that. Defense instead comes from:
+      1. An explicit reminder appended to the user turn to output ONLY the
+         raw JSON object with no preamble or closing remarks.
+      2. _parse_lenient_json(), which already recovers a complete JSON object
+         even if the model adds leading preamble text, markdown fences, or
+         gets truncated mid-response.
+      3. A retry: if a response still comes back empty/unparseable/missing
+         required fields, it's treated as a failed attempt and retried once
+         automatically before surfacing any error to the user.
+
+    required_keys: optional list of top-level keys that must be present and
+    non-empty for the response to be accepted — guards against a near-empty
+    reply "successfully" parsing as a technically-valid but useless {}.
+    """
+    reinforced_content = (
+        user_content
+        + "\n\n=== OUTPUT FORMAT — READ CAREFULLY ===\n"
+          "Respond with ONLY the raw JSON object described above. Do not include "
+          "any preamble, explanation, markdown code fences, or closing remarks — "
+          "your entire response must be valid JSON, starting with { and ending with }."
+    )
+    last_err = None
+    for _ in range(retries + 1):
+        msg = client.messages.create(
+            model=model, max_tokens=max_tokens, temperature=temperature, system=system,
+            messages=[{"role": "user", "content": reinforced_content}],
+        )
+        raw_text = msg.content[0].text if msg.content else ""
+        try:
+            data = _parse_lenient_json(raw_text)
+            if required_keys and not all(data.get(k) not in (None, "", [], {}) for k in required_keys):
+                raise ValueError("AI returned empty or incomplete JSON data")
+            return data
+        except Exception as e:
+            last_err = e
+            continue
+    raise ValueError(
+        "The AI didn't return a usable response this time — this can happen occasionally. "
+        "Please try again."
+    ) from last_err
+
+
 def _get_active_profile():
     """Return the active CV profile, or fall back to the most recently created."""
     active = CVProfile.query.filter_by(is_active=True).first()
@@ -276,14 +328,10 @@ CRITICAL:
 
 def parse_cv(raw_text: str) -> dict:
     client = get_anthropic()
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=8192,
-        temperature=0,
-        system=CV_PARSE_SYSTEM,
-        messages=[{"role": "user", "content": raw_text}],
+    return _ai_json(
+        client, "claude-haiku-4-5-20251001", CV_PARSE_SYSTEM, raw_text,
+        max_tokens=8192, temperature=0, required_keys=["full_name"],
     )
-    return json.loads(_clean_json(msg.content[0].text))
 
 
 def _normalise_url(url: str) -> str:
@@ -367,11 +415,9 @@ def score_job(profile_dict: dict, job_description: str, search_query: str = "") 
     summary  = _compact_profile_summary(profile_dict)
     jd_short = job_description[:1500]
     query_line = f"\nUser is searching for: {search_query}" if search_query else ""
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=20,      # only needs {"score":75}
-        temperature=0,
-        system=(
+    data = _ai_json(
+        client, "claude-haiku-4-5-20251001",
+        (
             'Return ONLY JSON: {"score":<integer 0-100>}. '
             'Score how well the candidate fits this job. Rules: '
             '1) If the job is a DIFFERENT role type than the user is searching for, score 30 or below. '
@@ -380,9 +426,11 @@ def score_job(profile_dict: dict, job_description: str, search_query: str = "") 
             'a title matching the searched role and the candidate profile deserves 75+. '
             'Do NOT penalize a job for having little text.'
         ),
-        messages=[{"role": "user", "content": f"Candidate:\n{summary}{query_line}\n\nJob:\n{jd_short}"}],
+        f"Candidate:\n{summary}{query_line}\n\nJob:\n{jd_short}",
+        max_tokens=20,      # only needs "score":75}
+        temperature=0, required_keys=["score"],
     )
-    return json.loads(_clean_json(msg.content[0].text))["score"]
+    return data["score"]
 
 
 # ── Search result cache (in-memory, 30-min TTL) ───────────────────────────────
@@ -582,6 +630,7 @@ def _normalise(item: dict, platform: str = "") -> dict:
 # Collects scraper failures during a fetch so they can be shown to the user
 # instead of a misleading generic "no jobs found".
 _LAST_FETCH_ERRORS: list = []
+_FETCH_ERRORS_LOCK = threading.Lock()
 
 
 def _run_actor(apify, actor_id: str, run_input: dict) -> list:
@@ -598,7 +647,8 @@ def _run_actor(apify, actor_id: str, run_input: dict) -> list:
         if status and status != "SUCCEEDED":
             msg = f"{short}: run ended with status {status}"
             print(f"[Apify:{short}] {msg}")
-            _LAST_FETCH_ERRORS.append(msg)
+            with _FETCH_ERRORS_LOCK:
+                _LAST_FETCH_ERRORS.append(msg)
 
         items = list(apify.dataset(_get_dataset_id(run)).iterate_items())
         print(f"[Apify:{short}] {len(items)} results")
@@ -613,7 +663,8 @@ def _run_actor(apify, actor_id: str, run_input: dict) -> list:
                 "Your Apify account has hit its monthly usage limit. "
                 "Please go to apify.com → Billing and upgrade your plan or wait for the monthly reset."
             )
-        _LAST_FETCH_ERRORS.append(f"{short}: {err[:200]}")
+        with _FETCH_ERRORS_LOCK:
+            _LAST_FETCH_ERRORS.append(f"{short}: {err[:200]}")
         return []
 
 
@@ -690,6 +741,14 @@ def fetch_jobs(query: str, location: str, platforms: list, hours: int = 48) -> l
     city = location.split(",")[0].strip() if location else ""
     print(f"[JobFetch] Location='{location}' → country='{indeed_cc}' ({country_name})")
 
+    # Each board category hits a separate Apify actor, and each actor call can
+    # block for up to 4 minutes. Running them one after another meant a search
+    # spanning all three categories (multi-board + Wellfound + Dice) could take
+    # their combined time — up to ~12 minutes worst case. Since none of the
+    # three depend on each other, they run concurrently instead: total wait
+    # becomes roughly the SLOWEST single actor, not the sum of all three.
+    jobs_to_run = []
+
     # Multi-board platforms
     multi = selected - DEDICATED_ACTORS
     site_map: dict[str, str] = {}
@@ -713,10 +772,10 @@ def fetch_jobs(query: str, location: str, platforms: list, hours: int = 48) -> l
         if alt:
             terms.append(alt)
 
-        mb_results = _run_multi_board(apify, query, location, site_map,
-                                      hours_old=hours, country_code=indeed_cc,
-                                      search_terms=terms)
-        results.extend(mb_results)
+        jobs_to_run.append(lambda: _run_multi_board(
+            apify, query, location, site_map,
+            hours_old=hours, country_code=indeed_cc, search_terms=terms,
+        ))
 
     # Wellfound — strict freshness: 'today' for 6/24h, never wider than the window
     if "Wellfound" in selected:
@@ -727,23 +786,47 @@ def fetch_jobs(query: str, location: str, platforms: list, hours: int = 48) -> l
             "pagesToFetch":   1,
             "datePosted":     "today" if hours <= 24 else "3days",   # enum: all|today|3days|week|month
         }
-        items = _run_actor(apify, ACTOR_WELLFOUND, wf_input)
-        for item in items[:15]:
-            results.append(_normalise(item, "Wellfound"))
+        jobs_to_run.append(lambda: [
+            _normalise(item, "Wellfound") for item in _run_actor(apify, ACTOR_WELLFOUND, wf_input)[:15]
+        ])
 
     # Dice — US-focused board; skip if non-US country detected
     if "Dice" in selected:
         if country_code != "usa":
             print(f"[JobFetch] Skipping Dice — not a US location (country_code='{country_code}')")
         else:
-            items = _run_actor(apify, ACTOR_DICE, {
+            dice_input = {
                 "keyword":        query,
                 "location":       location,
                 "posted_date":    "24h" if hours <= 24 else "3d",   # enum: all|24h|3d|7d|30d
                 "results_wanted": 15,
-            })
-            for item in items[:15]:
-                results.append(_normalise(item, "Dice"))
+            }
+            jobs_to_run.append(lambda: [
+                _normalise(item, "Dice") for item in _run_actor(apify, ACTOR_DICE, dice_input)[:15]
+            ])
+
+    if not jobs_to_run:
+        return results
+
+    if len(jobs_to_run) == 1:
+        results.extend(jobs_to_run[0]())
+    else:
+        with ThreadPoolExecutor(max_workers=len(jobs_to_run)) as pool:
+            futures = [pool.submit(job) for job in jobs_to_run]
+            for fut in as_completed(futures):
+                try:
+                    results.extend(fut.result())
+                except RuntimeError:
+                    # _run_actor only raises RuntimeError for account-level
+                    # problems (Apify billing/quota hit) — that's not a
+                    # per-board hiccup, it means every remaining call would
+                    # fail the same way, so surface it immediately instead
+                    # of quietly returning a partial, misleading result set.
+                    raise
+                except Exception as e:
+                    print(f"[JobFetch] A scraper category failed: {e}")
+                    with _FETCH_ERRORS_LOCK:
+                        _LAST_FETCH_ERRORS.append(str(e))
 
     return results
 
@@ -756,6 +839,40 @@ def index():
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates"),
         "index.html"
     )
+
+
+# Every /api/* route always returns JSON — even for errors the app itself
+# didn't anticipate (unmatched route, wrong HTTP method, missing/invalid
+# request body, or an unhandled 500). Without this, Flask's default error
+# pages are HTML, which the frontend's fetch wrapper can't parse as JSON —
+# it still degrades to a generic "HTTP 404"-style message, but these handlers
+# make sure that degrade path never actually triggers.
+@app.errorhandler(404)
+def _json_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    return e
+
+
+@app.errorhandler(405)
+def _json_405(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Method not allowed"}), 405
+    return e
+
+
+@app.errorhandler(415)
+def _json_415(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Request must be sent as JSON"}), 415
+    return e
+
+
+@app.errorhandler(500)
+def _json_500(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Something went wrong on our end. Please try again."}), 500
+    return e
 
 
 # CV routes
@@ -1207,14 +1324,8 @@ def skill_gap():
             f"=== JOB DESCRIPTION ===\n{jd[:2500]}"
         )
         client = get_anthropic()
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=4000,
-            temperature=0,
-            system=SKILL_GAP_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        result = json.loads(_clean_json(msg.content[0].text))
+        result = _ai_json(client, "claude-sonnet-4-6", SKILL_GAP_SYSTEM, prompt,
+                           max_tokens=4000, temperature=0)
         return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -1234,7 +1345,6 @@ def get_settings():
 def save_settings():
     data     = request.json or {}
     env_path = os.path.join(os.path.dirname(__file__), ".env")
-    lines    = open(env_path).readlines() if os.path.exists(env_path) else []
 
     def upsert(lines, key, val):
         found, out = False, []
@@ -1247,21 +1357,40 @@ def save_settings():
             out.append(f"{key}={val}\n")
         return out
 
-    if data.get("anthropic_key"):
-        os.environ["ANTHROPIC_API_KEY"] = data["anthropic_key"]
-        lines = upsert(lines, "ANTHROPIC_API_KEY", data["anthropic_key"])
-    if data.get("apify_key"):
-        os.environ["APIFY_API_KEY"] = data["apify_key"]
-        lines = upsert(lines, "APIFY_API_KEY", data["apify_key"])
-    open(env_path, "w").writelines(lines)
-    return jsonify({"success": True, "message": "Keys saved successfully."})
+    try:
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+        if data.get("anthropic_key"):
+            os.environ["ANTHROPIC_API_KEY"] = data["anthropic_key"]
+            lines = upsert(lines, "ANTHROPIC_API_KEY", data["anthropic_key"])
+        if data.get("apify_key"):
+            os.environ["APIFY_API_KEY"] = data["apify_key"]
+            lines = upsert(lines, "APIFY_API_KEY", data["apify_key"])
+
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        return jsonify({"success": True, "message": "Keys saved successfully."})
+    except Exception as exc:
+        return jsonify({"error": f"Could not save keys: {exc}"}), 500
 
 
 # ── Resume Builder ────────────────────────────────────────────────────────────
 
-RESUME_SYSTEM = """You are a world-class ATS resume specialist and career strategist. Your job is to engineer a resume that scores 90-95% on ATS systems for the target role while reading like a polished, human-written document.
+RESUME_SYSTEM = """You are a veteran resume architect and senior technical recruiter with 20+ years screening resumes for top-tier MNCs (Google, Microsoft, Amazon, JPMorgan, Deloitte, Accenture, and similar). You have personally reviewed tens of thousands of resumes and know exactly what makes a hiring manager keep reading and what gets a resume silently rejected in the first 6 seconds. Your job is to rebuild this candidate's real background into a resume that would survive YOUR OWN screening pass — one that scores 90-95% on ATS systems for the target role AND reads as unmistakably professional, polished, and interview-worthy to a human reader on the very first scan.
 
 YOUR GOAL: Take the candidate's real background and reshape, expand, and optimize every section so the resume is a near-perfect match for the job description. You are allowed — and expected — to strategically enhance content to hit the required ATS score.
+
+WHAT GETS A RESUME PICKED — apply this lens to every single line you write:
+  • The 6-second scan test: a recruiter's eyes hit the name/title, then the top third of page 1. If that doesn't instantly establish seniority, domain, and one standout number, the resume gets set aside. Front-load your strongest quantified achievement in the summary AND in Bullet 1 of the current role.
+  • Achievements over duties: every bullet must answer "so what happened because of this" — never just describe a responsibility. Any duty-only sentence gets rewritten into a result.
+  • Specificity beats adjectives: name the exact tool, scale, team size, percentage, or dollar figure. "Improved system performance" is rejected on sight; "Cut p99 latency from 800ms to 220ms across a 40-node cluster" gets read twice.
+  • One consistent professional narrative: the summary, skills, and bullets must all tell the same coherent story about who this person is professionally — never scattered or contradictory positioning.
+  • Zero tolerance for weak-opener phrases: never start a bullet with "Responsible for", "Worked on", "Helped with", "Assisted in", "Involved in", "Duties included", or "Tasked with" — these read as junior and vague. Always open with a strong, specific past-tense (or present-tense for current ongoing scope) action verb.
+  • Make the hiring manager think "this person could walk in and contribute on day one": the summary and top bullets should leave a clear impression of upward trajectory and readiness for MORE responsibility, not just a record of what already happened. A resume that only recaps the past reads as a career that's plateaued — one that also signals scope, ownership, and growth reads as a candidate worth investing in.
+  • The summary is the single highest-leverage sentence-set on the page, and it must NOT read like a fill-in-the-blank template. Do not default to the same "X years of experience in Y, delivered Z, positioned to bring this to a [role]" shape every single time — across many resumes that pattern becomes visibly formulaic and forgettable. Instead pick whichever opening makes THIS candidate's single strongest, most specific credential unmissable in the first sentence: sometimes that's leading straight with the most dramatic quantified outcome ("Cut identity-related security incidents 90% while architecting..."), sometimes a scope/ownership statement ("Owns end-to-end IAM architecture for a 40,000-user regulated banking environment..."), sometimes a sharp positioning line tied directly to the JD's single biggest priority. The test: within the first two lines, a hiring manager should think "this is exactly who we're looking for" — not recognize a familiar template they've read a hundred times before.
 
 STEP 1 — Deep JD Analysis:
   • Extract every technical keyword, tool, framework, methodology, and soft skill the JD mentions
@@ -1278,31 +1407,67 @@ STEP 2 — Strategic Enhancement (you ARE allowed to do this):
 
 STEP 3 — ATS Optimization:
   • Every major keyword from the JD must appear somewhere in the resume
-  • Skills section must include ALL tools and technologies mentioned in the JD that fit the candidate's profile
+  • The skills section must be CURATED, not just appended to. Do not simply pile the candidate's entire original skill list on top of every JD keyword — that produces a bloated, unfocused section that reads as padding and can make an otherwise strong candidate look unfocused or indiscriminately over-qualified rather than sharply targeted. Instead: (1) keep the candidate's original skills that are genuinely relevant to THIS role, (2) add the JD's required tools/technologies that plausibly fit the candidate's real background per STEP 2, and (3) actively DROP original skills that have no bearing on this specific JD (e.g., an unrelated legacy stack from a different part of their background). A tightly-targeted skills section that closely mirrors what THIS job actually needs reads as more qualified than a long, exhaustive one — relevance beats completeness.
   • Summary must contain the exact job title from the JD plus top 3-4 keywords
   • Mirror the JD's language — use their exact terms (e.g., if they say "MLOps" use "MLOps", not "ML operations")
 
 STEP 4 — Human writing quality:
-  • Vary sentence structure and opening verbs — no two bullets start the same way
+  • Vary sentence structure and opening verbs — no two bullets start the same way, anywhere in the resume
   • Lead with impact: "Cut inference latency 35% by migrating model serving to TorchServe with async batching"
   • Keep bullets tight — 1-2 lines. Never chain 3+ clauses
   • No AI filler words: no "leveraging", "utilizing", "spearheading", "synergizing", "robust"
+  • No generic recruiter-cliché phrases: no "results-driven professional", "team player", "hard-working", "detail-oriented", "passionate about", "excellent communication skills", "proven track record", "go-getter" — these signal a template resume and get discarded
   • No em dashes (—) — use hyphen (-) instead
   • Do NOT end bullets with "demonstrating X" or "showcasing Y"
+
+STEP 5 — Bullet ORDER within each role (critical — do not list chronologically or randomly):
+  • Bullet 1 must be a scope/ownership statement — the size, scale, or breadth of what this person owned (team size, user count, environment scale, budget, or system criticality)
+  • Bullets 2-4: the highest-impact initiatives and achievements for THIS role, ranked by seniority and business impact — biggest win first
+  • Remaining bullets: supporting responsibilities, day-to-day ownership, and process/documentation work — these go LAST, never first
+  • Never open a role with a routine or administrative bullet ("produced documentation", "attended meetings") — always lead with impact and scope
+
+STEP 6 — Bullet COUNT per role, scaled by recency (this controls resume length — follow precisely):
+  • Most recent / current role: 6-8 bullets (this is the role recruiters read closest)
+  • One role back: 5-7 bullets
+  • Two roles back: 4-6 bullets
+  • Three+ roles back or anything more than ~6 years old: 3-5 bullets — compress into fewer, denser, higher-impact bullets rather than listing every task
+  • Do NOT create a separate PROJECTS section under any circumstance (see ABSOLUTE RULE 6) — that space instead goes toward stronger, more complete experience bullets
+  • TARGET_PAGE_COUNT will be given to you in the user message — the total bullet volume across all roles and projects must realistically fit that many pages. If the candidate has many roles, compress older ones harder rather than cutting entire roles.
+
+STEP 7 — Final professional-polish self-check (verify silently before outputting JSON — this is what separates a resume that gets picked from one that gets tossed):
+  • Tense consistency: every bullet in a past/completed role uses past tense throughout (Led, Built, Reduced, Migrated) — never mix in "-ing" or present-tense verbs inside a past role. In the CURRENT role, present tense is fine for ongoing scope statements (Own, Lead, Drive) but completed wins in that same role should still read in past tense (Reduced, Migrated, Built) — never blend the two randomly bullet-to-bullet.
+  • No repeated opening verbs within the same role, and no more than one repeat of any opening verb across the whole resume — scan your own draft and rewrite any duplicate before finalizing.
+  • No buzzword salad — every skill or technology claim in the summary/skills section must be traceable to something a bullet actually demonstrates.
+  • No redundant bullets — if two bullets make essentially the same underlying claim in different words, merge them into one stronger bullet.
+  • Numbers formatted consistently as numerals everywhere (e.g., "15,000 users", "3x", "40%"), never spelled out.
+  • No casual tone, contractions, exclamation marks, or first-person pronouns ("I", "my", "we") anywhere in the document.
+  • Every acronym used is either universally standard in the domain (AWS, SQL, API, SSO) or spelled out on first use.
+  • The professional summary's opening line leads with this candidate's single strongest, most specific credential (a dramatic outcome, a scope/ownership statement, or a sharp JD-matched positioning line — see the summary-variety rule above) — never generic filler, and never the identical sentence shape you'd default to for a different candidate.
+  • Dates, location formatting, and capitalization style are IDENTICAL across every experience and education entry — no entry should look formatted differently from the others.
+
+STEP 8 — Sound human-written, not AI-generated (read every bullet back against this list before finalizing):
+  • Vary sentence LENGTH, not just opening verbs — a real person writes some short, punchy bullets and some longer, detailed ones. If every bullet lands at roughly the same length and rhythm, it reads as machine-generated. Break the pattern deliberately.
+  • Avoid AI writing tells: no "not only... but also" constructions, no forced rule-of-three lists in every bullet ("designed, built, and deployed"), and don't repeat the same sentence template (Verb + Object + "by/via" + Method + "resulting in" + Metric) more than twice in a row anywhere in the resume — vary the construction the way a person naturally would.
+  • Avoid empty AI superlatives with no source behind them: "cutting-edge", "state-of-the-art", "seamless", "robust", "innovative", "dynamic", "game-changing" — a person who actually did the work names the specific thing, not an adjective for it.
+  • Write the way a strong professional would describe their own work to a peer or a hiring manager in conversation — not the way marketing copy describes a product.
+  • No bluffing, ever: every enhanced or added claim must be something the candidate could confidently explain and go deeper on if a hiring manager asked a follow-up question about it in an interview. Strategic enhancement (STEP 2) means sharpening, quantifying, and better-framing what the candidate credibly did — it never means inventing a named tool, certification, system, project, or outcome that their real background gives no plausible basis for. If in doubt about whether a specific addition is defensible, leave it out.
 
 ABSOLUTE RULES — never break these:
 1. NEVER change company names, job titles, or date ranges — keep EXACTLY as written in the original resume
 2. Keep the same roles and companies — you can enhance what was done there, but don't invent new employers
 3. Keep all original real metrics if they exist — you can ADD plausible metrics but never change existing ones
 4. The resume must still sound like this specific person — stay true to their career trajectory and tech domain
+5. Section order is FIXED and non-negotiable: SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION, CERTIFICATIONS — in that exact order, nothing else, nothing in between
+6. NEVER generate a separate PROJECTS section. A standalone projects write-up almost always just repeats the same work already described in the experience bullets, wastes page space, and reads as padding to a recruiter. If the candidate's background includes a genuinely standout initiative, fold its single most impressive outcome into the relevant employer's bullet list instead — do not write it up twice.
+7. NEVER name the hiring company (the company posting the JOB DESCRIPTION) anywhere in the resume — not in the summary, not in a bullet, nowhere. A resume is a reusable document the candidate sends to many different employers; hardcoding "positioned to contribute at [Hiring Company]" or similar makes it look like a template and means the candidate has to hand-edit it before every single application. Use the JD's TITLE, its keywords, and its required skills/technologies freely — those are what make the resume ATS-relevant. The hiring company's own name is the one JD detail that must never appear in the output. (Naming the employer belongs only in a cover letter, which is a separate document.)
 
 Output ONLY a valid raw JSON object with NO markdown fences, NO explanation, NO extra text:
 {
   "full_name": "exact from original",
   "title": "update to EXACTLY match the target job title from the JD",
-  "summary": "3-4 sentence ATS-optimized pitch — use exact JD job title, top JD keywords, and the candidate's strongest relevant achievements",
+  "summary": "3-4 sentence ATS-optimized pitch — use exact JD job title, top JD keywords, and the candidate's strongest relevant achievements. Do NOT default to a fixed 'years of experience + domain, then forward-looking close' template every time — vary the opening based on whichever angle makes THIS candidate's strongest, most specific credential unmissable in the first sentence: a dramatic quantified outcome ('Cut account-compromise incidents 90% by...'), a scope/ownership statement ('Owns end-to-end IAM architecture for a 40,000-user regulated environment...'), or a sharp positioning line tied to the JD's single biggest priority. May close with a brief forward-looking statement of the value/impact they'd bring next (e.g. 'positioned to drive similar impact in a platform security capacity') but this is optional, not mandatory — describe the TYPE of role/impact only, and NEVER name the specific hiring company from the job description (see ABSOLUTE RULE 7) — the summary must read as true for any employer hiring for this type of role, not tied to one specific company, and must not read as the same template reused across candidates",
   "skills": [
-    {"category": "category name", "items": "include ALL JD-required tools + candidate's original skills — JD keywords first"}
+    {"category": "category name", "items": "a SINGLE comma-separated STRING (not a JSON array) — e.g. \"Python, Go, Django, FastAPI\" — include ALL JD-required tools + candidate's original skills, JD keywords first"}
   ],
   "experience": [
     {
@@ -1310,13 +1475,6 @@ Output ONLY a valid raw JSON object with NO markdown fences, NO explanation, NO 
       "company": "EXACT original company name and location",
       "dates": "EXACT original dates",
       "bullets": ["enhanced bullets weaving in JD keywords, technologies, and methodologies — add plausible context where needed"]
-    }
-  ],
-  "projects": [
-    {
-      "name": "EXACT original project name",
-      "technologies": ["flat list — include JD-relevant technologies that fit the project context"],
-      "bullets": ["reframed to highlight aspects most relevant to the JD — add plausible technical detail"]
     }
   ],
   "education": [
@@ -1328,7 +1486,9 @@ Output ONLY a valid raw JSON object with NO markdown fences, NO explanation, NO 
   ],
   "certifications": ["EXACT certification as plain string — you may add 1-2 relevant certs if they are well-known and fit the role"],
   "ats_keywords_added": ["complete list of every JD keyword woven into the resume"]
-}"""
+}
+
+Do NOT include a "projects" key at all — see rule 6 above."""
 
 
 COVER_SYSTEM = """You are the chief cover letter specialist at a top executive recruiting firm. You write cover letters that get candidates interviews at companies they genuinely want to work at.
@@ -1660,18 +1820,24 @@ def _sanitize(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _generate_resume_content(raw_cv_text: str, jd: str) -> dict:
+def _generate_resume_content(raw_cv_text: str, jd: str, years_of_experience=None) -> dict:
     client = get_anthropic()
-    msg = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=8000,
-        temperature=0.3,   # slightly higher for creative, human-sounding enhancement
-        system=RESUME_SYSTEM,
-        messages=[{"role": "user", "content":
-            f"=== CANDIDATE BACKGROUND — base everything on this, enhance strategically to match the JD ===\n\n{raw_cv_text}\n\n"
-            f"=== TARGET JOB DESCRIPTION — engineer the resume to hit 90-95% ATS match for this role ===\n\n{jd}"}],
+    max_pages = _max_pages_for_experience(years_of_experience)
+    user_content = (
+        f"=== CANDIDATE BACKGROUND — base everything on this, enhance strategically to match the JD ===\n\n{raw_cv_text}\n\n"
+        f"=== TARGET JOB DESCRIPTION — engineer the resume to hit 90-95% ATS match for this role ===\n\n{jd}\n\n"
+        f"=== TARGET_PAGE_COUNT: {max_pages} pages — this is a hard cap, not a suggestion. "
+        f"Size every section's bullet count (per STEP 6) so the finished resume realistically "
+        f"fits within {max_pages} page(s) at normal font size. Compress older roles harder "
+        f"rather than cutting entire roles. ==="
     )
-    data = json.loads(_clean_json(msg.content[0].text))
+
+    data = _ai_json(
+        client, "claude-sonnet-4-6", RESUME_SYSTEM, user_content,
+        max_tokens=8000, temperature=0.3,   # slightly higher for creative, human-sounding enhancement
+        required_keys=["full_name", "experience"],
+    )
+
     # certifications stay as plain strings
     data["certifications"] = _flatten_to_strings(data.get("certifications", []))
     # education must stay as structured dicts — do NOT flatten
@@ -1693,8 +1859,8 @@ def _generate_text(system: str, prompt: str, max_tokens: int = 1500, model: str 
 
 def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
     """
-    Pixel-perfect match to Ranjith's original resume template.
-    Colors extracted directly from the original PDF via PyMuPDF:
+    Universal resume template applied to every generated resume, regardless of user.
+    Colors extracted directly from the reference PDF via PyMuPDF:
       - Name & section headers: #1F4E79 (dark navy blue), NOT green
       - Contact link color:     #0563C1 (blue, clickable)
       - Body text:              #000000 (black)
@@ -1716,14 +1882,21 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
                                     Paragraph, Spacer,
                                     HRFlowable, Table, TableStyle, KeepTogether)
     from reportlab.lib.colors import HexColor
+    from reportlab.lib.enums import TA_JUSTIFY
     from reportlab.pdfbase import pdfmetrics
     from io import BytesIO
 
     buf = BytesIO()
     W, H = letter
-    L = R = 0.5 * inch          # 0.5" margins match original
-    TM = BM = 0.14 * inch
-    CONTENT = W - L - R         # 7.5 inches
+    # Margins + font choice are template-level decisions, applied the same way
+    # for every candidate — measured directly off the reference resume via
+    # PyMuPDF (leftmost text x0, rightmost text x1, and bottom-most text y1 on
+    # a fully-packed page all landed within a point of each other, ~18pt), so
+    # the template uses that same tight, uniform 0.25" margin on every side
+    # rather than a generic "professional-looking" guess.
+    L = R = 0.25 * inch
+    TM = BM = 0.25 * inch
+    CONTENT = W - L - R         # 8.0 inches
 
     # Use BaseDocTemplate + explicit Frame with zero internal padding so that
     # free paragraphs and Table content both start at the same x (leftMargin).
@@ -1756,43 +1929,59 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
     else:  # 1 page
         sp = dict(bullet_lead=12, body_lead=12,   bullet_space=1,   entry_space=4,  sec_space=2,  font_body=10)
 
-    # ── Font sizes / leading calibrated to match original's single-page layout ─
-    # Original measured: ~11.5pt leading for bullets, 12.5pt for skills, 13pt for headers
-    name_s    = ParagraphStyle("N",  fontName="Helvetica-Bold", fontSize=17,
-                               textColor=NAVY,  alignment=1, spaceAfter=0, leading=19)
-    contact_s = ParagraphStyle("C",  fontName="Helvetica",      fontSize=8,
-                               textColor=BLACK, alignment=1, spaceAfter=0, leading=10)
-    section_s = ParagraphStyle("S",  fontName="Helvetica-Bold", fontSize=11,
-                               textColor=NAVY,  spaceBefore=0, spaceAfter=0, leading=13)
-    body_s    = ParagraphStyle("B",  fontName="Helvetica",      fontSize=sp['font_body'],
-                               textColor=BLACK, leading=sp['body_lead'], spaceAfter=0)
+    # ── Font sizes / leading — classic serif professional-resume template ─────
+    # Times-family serif body (matches the reference template) with justified
+    # paragraphs for a dense, evenly-margined, "properly typeset" look.
+    name_s    = ParagraphStyle("N",  fontName="Times-Bold", fontSize=16,
+                               textColor=NAVY,  alignment=1, spaceAfter=0, leading=18)
+    contact_s = ParagraphStyle("C",  fontName="Times-Roman", fontSize=11,
+                               textColor=BLACK, alignment=1, spaceAfter=0, leading=13)
+    section_s = ParagraphStyle("S",  fontName="Times-Bold", fontSize=10,
+                               textColor=NAVY,  spaceBefore=0, spaceAfter=0, leading=12)
+    body_s    = ParagraphStyle("B",  fontName="Times-Roman", fontSize=sp['font_body'],
+                               textColor=BLACK, leading=sp['body_lead'], spaceAfter=0, alignment=TA_JUSTIFY)
     # Skills: tight leading, same 10pt as original
-    cat_s     = ParagraphStyle("Ca", fontName="Helvetica-Bold", fontSize=10,
+    cat_s     = ParagraphStyle("Ca", fontName="Times-Bold", fontSize=10,
                                textColor=BLACK, leading=11)
-    skv_s     = ParagraphStyle("Sk", fontName="Helvetica",      fontSize=10,
+    skv_s     = ParagraphStyle("Sk", fontName="Times-Roman", fontSize=10,
                                textColor=BLACK, leading=11)
     # Experience: title 10.5pt Bold, dates 10pt Bold right-aligned
-    etitle_s  = ParagraphStyle("ET", fontName="Helvetica-Bold", fontSize=10.5,
+    etitle_s  = ParagraphStyle("ET", fontName="Times-Bold", fontSize=10.5,
                                textColor=BLACK, leading=13)
-    edate_s   = ParagraphStyle("ED", fontName="Helvetica-Bold", fontSize=10,
+    edate_s   = ParagraphStyle("ED", fontName="Times-Bold", fontSize=10,
                                textColor=BLACK, alignment=2, leading=13)
     # Company line: 10pt Bold name + regular location
-    eco_s     = ParagraphStyle("EC", fontName="Helvetica-Bold", fontSize=10,
+    eco_s     = ParagraphStyle("EC", fontName="Times-Bold", fontSize=10,
                                textColor=BLACK, leading=10.5, spaceAfter=0)
-    bullet_s  = ParagraphStyle("Bu", fontName="Helvetica",      fontSize=sp['font_body'],
-                               textColor=BLACK, leading=sp['bullet_lead'], leftIndent=10, firstLineIndent=-10, spaceAfter=sp['bullet_space'])
+    # Bullets render as a fixed-width 2-column table (dot | text) rather than
+    # a hanging-indent Paragraph. A hanging indent relies on the first line
+    # starting at a position determined by the bullet glyph + whatever space
+    # character follows it — but under TA_JUSTIFY, a literal space is a
+    # stretch point whose rendered width silently varies line to line (each
+    # line stretches by a different amount to fill the column), so the
+    # wrapped continuation line's fixed indent could never reliably match the
+    # first line's actual, variable text-start position. A table cell's left
+    # edge is fixed no matter what — so the text Paragraph inside it (first
+    # line AND every wrapped line) always starts at the exact same x,
+    # matching the reference resume's consistent bullet alignment exactly.
+    BULLET_COL_W = 8.2   # matches the reference resume's measured bullet-to-text gap
+    bullet_dot_s = ParagraphStyle("Bd", fontName="Times-Roman", fontSize=sp['font_body'],
+                               textColor=BLACK, leading=sp['bullet_lead'])
+    bullet_s  = ParagraphStyle("Bu", fontName="Times-Roman", fontSize=sp['font_body'],
+                               textColor=BLACK, leading=sp['bullet_lead'],
+                               spaceAfter=0, alignment=TA_JUSTIFY)
     # Project name: 10.5pt Bold (left), tech: 9.5pt Italic #333333 (right)
-    ptitle_s  = ParagraphStyle("PT", fontName="Helvetica-Bold", fontSize=10.5,
+    ptitle_s  = ParagraphStyle("PT", fontName="Times-Bold", fontSize=10.5,
                                textColor=BLACK, leading=13)
-    ptech_s   = ParagraphStyle("Pk", fontName="Helvetica-Oblique", fontSize=9.5,
+    ptech_s   = ParagraphStyle("Pk", fontName="Times-Italic", fontSize=9.5,
                                textColor=SEP,   alignment=2, leading=11)
     # Education: degree 10.5pt Bold, dates 10pt Bold right
-    deg_s     = ParagraphStyle("Dg", fontName="Helvetica-Bold", fontSize=10.5,
+    deg_s     = ParagraphStyle("Dg", fontName="Times-Bold", fontSize=10.5,
                                textColor=BLACK, leading=13)
-    ddate_s   = ParagraphStyle("Dd", fontName="Helvetica-Bold", fontSize=10,
+    ddate_s   = ParagraphStyle("Dd", fontName="Times-Bold", fontSize=10,
                                textColor=BLACK, alignment=2, leading=13)
     # University: 10pt Bold name + regular location
-    univ_s    = ParagraphStyle("Un", fontName="Helvetica-Bold", fontSize=10,
+    univ_s    = ParagraphStyle("Un", fontName="Times-Bold", fontSize=10,
                                textColor=BLACK, leading=11, spaceAfter=1)
 
     story = []
@@ -1810,8 +1999,10 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
         story.append(HRFlowable(width="100%", thickness=0.75,
                                 color=RULE, spaceAfter=0))
 
-    def row2(left_para, right_para, lw_frac=0.65):
-        """Two-column row: left content + right-aligned dates/tech."""
+    def row2(left_para, right_para, lw_frac=0.65, target=None):
+        """Two-column row: left content + right-aligned dates/tech.
+        Pass `target` (a list) to collect the flowable for a KeepTogether group
+        instead of appending straight to the page story."""
         lw = CONTENT * lw_frac
         rw = CONTENT * (1 - lw_frac)
         t = Table([[left_para, right_para]], colWidths=[lw, rw])
@@ -1822,7 +2013,7 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
             ("TOPPADDING",     (0,0),(-1,-1),0),
             ("BOTTOMPADDING",  (0,0),(-1,-1),0),
         ]))
-        story.append(t)
+        (target if target is not None else story).append(t)
 
     def row2_edu(left_para, right_para):
         """Wider left column for education — prevents long degree lines from wrapping."""
@@ -1838,8 +2029,23 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
         ]))
         story.append(t)
 
-    def bullet(text):
-        story.append(Paragraph("&#183; " + T(text), bullet_s))
+    def bullet(text, target=None):
+        # Fixed-width 2-column table: [bullet dot | text]. The text column's
+        # left edge never moves regardless of content, so the first line and
+        # every wrapped continuation line of the bullet always start at the
+        # exact same x — see the BULLET_COL_W comment above for why a plain
+        # hanging-indent Paragraph can't guarantee that under TA_JUSTIFY.
+        row = Table([[Paragraph("&#8226;", bullet_dot_s), Paragraph(T(text), bullet_s)]],
+                    colWidths=[BULLET_COL_W, CONTENT - BULLET_COL_W])
+        row.setStyle(TableStyle([
+            ("VALIGN",        (0,0),(-1,-1),"TOP"),
+            ("LEFTPADDING",   (0,0),(-1,-1),0),
+            ("RIGHTPADDING",  (0,0),(-1,-1),0),
+            ("TOPPADDING",    (0,0),(-1,-1),0),
+            ("BOTTOMPADDING", (0,0),(-1,-1),0),
+        ]))
+        row.spaceAfter = sp['bullet_space']
+        (target if target is not None else story).append(row)
 
     def _href(url, label):
         """Clickable hyperlink in blue (#0563C1) matching original PDF."""
@@ -1853,9 +2059,9 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
             idx = text.index(" - ")
             name_part = T(text[:idx])
             rest_part = T(text[idx + 3:])  # everything after " - "
-            # eco_s/univ_s base is Helvetica-Bold; switch location to regular weight
+            # eco_s/univ_s base is Times-Bold; switch location to regular weight
             return Paragraph(
-                f'<b>{name_part}</b><font name="Helvetica"> - {rest_part}</font>',
+                f'<b>{name_part}</b><font name="Times-Roman"> - {rest_part}</font>',
                 style)
         return Paragraph(f"<b>{T(text)}</b>", style)
 
@@ -1901,21 +2107,57 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
         tdata = []
         for sk in skills:
             if isinstance(sk, dict):
-                cat   = T(sk.get("category", ""))
-                items = T(sk.get("items", ""))
-                # Colon is BOLD in original (":  " with two spaces after colon)
+                cat = T(sk.get("category", ""))
+                raw_items = sk.get("items", "")
+                # The model sometimes returns a JSON array of skills instead of a
+                # single joined string (the schema asks for a string, but "items"
+                # reads like a list to a language model) — normalise either shape
+                # into a clean ", "-joined string so we never render a Python
+                # list's repr (e.g. "['Python', 'Go']") onto the resume.
+                if isinstance(raw_items, (list, tuple)):
+                    items = T(", ".join(str(x).strip() for x in raw_items if str(x).strip()))
+                else:
+                    items = T(raw_items)
+                # Colon gets its OWN column (not baked into the items Paragraph)
+                # so the items column's left edge is fixed by the table
+                # structure. Previously the colon + items were one Paragraph
+                # with no hanging indent, so line 1 (after "<b>:  </b>")
+                # started a few points right of the cell edge, but any
+                # wrapped continuation line snapped back to the raw cell
+                # edge — same left-edge mismatch as the bullet-list bug
+                # fixed earlier, just showing up here for long skill lists.
                 tdata.append([
                     Paragraph(cat, cat_s),
-                    Paragraph('<b>:  </b>' + items, skv_s)
+                    Paragraph("<b>:</b>", cat_s),
+                    Paragraph(items, skv_s),
                 ])
         if tdata:
-            col_l = 1.75 * inch
-            col_r = CONTENT - col_l
-            tbl = Table(tdata, colWidths=[col_l, col_r])
+            # Size the category column to the widest label actually used, so a
+            # long category name (e.g. "Privileged Access & Identity Governance")
+            # never wraps onto a second line — a wrapped label is what makes the
+            # rows look unevenly staggered/misaligned down the page. Capped so
+            # one long outlier can't blow out the whole column.
+            # Measure the RAW category text, not T()'s XML-escaped version —
+            # T() turns "&" into "&amp;" so Paragraph renders it correctly,
+            # but that adds 4 literal characters that never actually appear
+            # on the page. Measuring the escaped string over-counts width by
+            # ~20pt for any category containing "&" (extremely common —
+            # "Cloud & Security", "API & Integration", etc.), which was
+            # pushing col_l past its cap and leaving a large dead gap before
+            # the colon on every short category label.
+            longest = max(
+                (pdfmetrics.stringWidth(str(sk.get("category", "") or ""), "Times-Bold", 10)
+                 for sk in skills if isinstance(sk, dict)),
+                default=1.7 * inch,
+            )
+            col_l   = min(max(longest + 10, 1.7 * inch), 2.4 * inch)
+            colon_w = pdfmetrics.stringWidth(":", "Times-Bold", 10) + 6   # colon + fixed gap before items
+            col_r   = CONTENT - col_l - colon_w
+            tbl = Table(tdata, colWidths=[col_l, colon_w, col_r])
             tbl.setStyle(TableStyle([
                 ("VALIGN",        (0,0),(-1,-1),"TOP"),
                 ("LEFTPADDING",   (0,0),(-1,-1),0),
-                ("RIGHTPADDING",  (0,0),(-1,-1),3),
+                ("RIGHTPADDING",  (0,0),(-1,-1),0),
                 ("TOPPADDING",    (0,0),(-1,-1),0),
                 ("BOTTOMPADDING", (0,0),(-1,-1),0),
             ]))
@@ -1934,17 +2176,23 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
             title   = T(exp.get("title", ""))
             company = T(exp.get("company", ""))
             dates   = T(exp.get("dates", ""))
+            bullets = [b for b in (exp.get("bullets") or []) if isinstance(b, str) and b.strip()]
 
-            # Title bold 10.5pt (left) + Dates bold 10pt (right)
-            row2(Paragraph(title, etitle_s), Paragraph(dates, edate_s), lw_frac=0.65)
-
-            # Company line: bold company name + regular " - Location" (matches original)
+            # Glue the header (title/dates row + company line) to at least the
+            # first bullet in one KeepTogether unit — this is what stops a page
+            # break from stranding a role's heading alone at the bottom of a
+            # page with every bullet pushed to the next page. Remaining bullets
+            # flow normally so a long entry can still break across pages.
+            head_block = []
+            row2(Paragraph(title, etitle_s), Paragraph(dates, edate_s), lw_frac=0.65, target=head_block)
             if company:
-                story.append(company_para(company, eco_s))
+                head_block.append(company_para(company, eco_s))
+            if bullets:
+                bullet(bullets[0], target=head_block)
+            story.append(KeepTogether(head_block))
 
-            for b in (exp.get("bullets") or []):
-                if isinstance(b, str) and b.strip():
-                    bullet(b)
+            for b in bullets[1:]:
+                bullet(b)
             story.append(Spacer(1, sp['entry_space']))
 
     # ── PROJECTS ─────────────────────────────────────────────────────────────
@@ -1962,9 +2210,14 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
 
             # Project name bold 10.5pt (left) + tech italic 9.5pt #333333 (right)
             # Measure exact text widths — only use single-line layout if both fit
-            pw = pdfmetrics.stringWidth(pname_raw, "Helvetica-Bold", 10.5)
-            tw = pdfmetrics.stringWidth(techs_raw, "Helvetica-Oblique", 9.5)
+            pw = pdfmetrics.stringWidth(pname_raw, "Times-Bold", 10.5)
+            tw = pdfmetrics.stringWidth(techs_raw, "Times-Italic", 9.5)
             gap = CONTENT - pw - tw - 8   # 8pt safety margin
+
+            proj_bullets = [b for b in (proj.get("bullets") or []) if isinstance(b, str) and b.strip()]
+            # Same fix as PROFESSIONAL EXPERIENCE — glue the project header to at
+            # least its first bullet so it can't be orphaned at a page break.
+            head_block = []
             if gap >= 0:
                 # Both fit on one line — 3-col table: [name | spacer | tech]
                 pt = Table([[Paragraph(pname, ptitle_s), '', Paragraph(techs, ptech_s)]],
@@ -1976,19 +2229,22 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
                     ("TOPPADDING",    (0,0),(-1,-1),0),
                     ("BOTTOMPADDING", (0,0),(-1,-1),0),
                 ]))
-                story.append(pt)
+                head_block.append(pt)
             else:
                 # Tech list too long for one line — show project name on its own line,
                 # then tech list left-aligned underneath (italic, smaller, #333333)
-                ptech_wrap_s = ParagraphStyle("Pkw", fontName="Helvetica-Oblique", fontSize=9,
+                ptech_wrap_s = ParagraphStyle("Pkw", fontName="Times-Italic", fontSize=9,
                                               textColor=SEP, leading=11, spaceAfter=0)
-                story.append(Paragraph(pname, ptitle_s))
+                head_block.append(Paragraph(pname, ptitle_s))
                 if techs:
-                    story.append(Paragraph(techs, ptech_wrap_s))
+                    head_block.append(Paragraph(techs, ptech_wrap_s))
 
-            for b in (proj.get("bullets") or []):
-                if isinstance(b, str) and b.strip():
-                    bullet(b)
+            if proj_bullets:
+                bullet(proj_bullets[0], target=head_block)
+            story.append(KeepTogether(head_block))
+
+            for b in proj_bullets[1:]:
+                bullet(b)
             story.append(Spacer(1, sp['entry_space']))
 
     # ── EDUCATION ────────────────────────────────────────────────────────────
@@ -2044,6 +2300,137 @@ def _build_resume_pdf(resume_data: dict, target_pages: int = 1) -> bytes:
 
     doc.build(story)
     return buf.getvalue()
+
+
+def _pdf_page_count(pdf_bytes: bytes) -> int:
+    """Count actual rendered pages of a generated PDF via PyMuPDF."""
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        n = doc.page_count
+        doc.close()
+        return n
+    except Exception:
+        return 1
+
+
+def _max_pages_for_experience(years_of_experience) -> int:
+    """Senior-resume-architect rule: candidates under ~3 years of experience
+    read best at 1-2 pages; anyone with more experience gets a strict 3-page
+    hard cap — never more, regardless of how much career history they have."""
+    try:
+        yrs = float(years_of_experience)
+    except (TypeError, ValueError):
+        yrs = 5.0  # unknown experience — assume mid-career, use the safer 3-page cap
+    return 2 if yrs < 3 else 3
+
+
+def _estimate_years_of_experience(text: str):
+    """Best-effort heuristic for a directly-pasted resume with no saved CV
+    profile to read years_of_experience from: look for '<N>+ years of
+    experience' style phrasing (very common in resume summaries) and take the
+    largest figure found. Returns None if nothing matches, which safely falls
+    back to the mid-career 3-page cap in _max_pages_for_experience."""
+    matches = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:of\s+)?experience", text or "", re.IGNORECASE)
+    if not matches:
+        return None
+    try:
+        return max(float(m) for m in matches)
+    except ValueError:
+        return None
+
+
+def _extract_contact_info(text: str) -> dict:
+    """Lightweight regex extraction of contact details from a pasted resume
+    so the generated PDF header isn't blank when there's no saved CV profile
+    to pull structured contact fields from."""
+    text = text or ""
+    email_m = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
+    phone_m = re.search(r"(\+?\d[\d\-\s().]{7,}\d)", text)
+    li_m    = re.search(r"(https?://)?(www\.)?linkedin\.com/in/[\w-]+/?", text, re.IGNORECASE)
+    gh_m    = re.search(r"(https?://)?(www\.)?github\.com/[\w-]+/?", text, re.IGNORECASE)
+    return {
+        "contact_email": email_m.group(0) if email_m else "",
+        "phone":         phone_m.group(0).strip() if phone_m else "",
+        "linkedin_url":  li_m.group(0) if li_m else "",
+        "github_url":    gh_m.group(0) if gh_m else "",
+    }
+
+
+def _fit_resume_to_pages(resume_data: dict, years_of_experience=None) -> bytes:
+    """
+    Render the resume and guarantee it respects the page cap dictated by the
+    candidate's years of experience. Strategy, in order:
+      1. Render at the tightest spacing tier first to find the natural minimum
+         page count the actual content needs. Then use the MOST SPACIOUS tier
+         that still holds to that same minimum page count — generous, easy-to
+         -read spacing without padding the resume out with an unnecessary
+         near-empty extra page (trying the spacious tier first would do
+         exactly that: a 1-page-worthy resume could bloat into a sparse
+         2-pager purely from loose leading, not from actual content volume).
+      2. If even the tightest spacing overflows the cap, trim bullets from the
+         oldest roles/projects first (floor of 3 per role, 2 per project) and
+         re-render until it fits.
+    This is what enforces "no user gets disappointed" — every generated resume
+    comes out at or under its allotted page count, tightly and evenly filled,
+    with no orphaned headers and no wasted white space.
+    """
+    max_pages = _max_pages_for_experience(years_of_experience)
+
+    # 1) Find the natural minimum page count at the tightest, most
+    #    content-dense spacing tier — this is the true floor for this content.
+    pdf = _build_resume_pdf(resume_data, target_pages=1)
+    min_pages = _pdf_page_count(pdf)
+
+    if min_pages <= max_pages:
+        # Content already fits. Walk toward more spacious tiers and keep
+        # upgrading as long as the page count doesn't grow past that natural
+        # minimum — spacing tiers only get looser from tier 1 → 3, so stop
+        # upgrading the moment one overflows.
+        for tier in (2, 3):
+            candidate = _build_resume_pdf(resume_data, target_pages=tier)
+            if _pdf_page_count(candidate) <= min_pages:
+                pdf = candidate
+            else:
+                break
+        return pdf
+
+    # 2) Still over the cap — trim content from the oldest entries first and
+    #    retry at the tightest spacing (most content-dense) each time.
+    trimmed = copy.deepcopy(resume_data)
+    experience = trimmed.get("experience") or []
+    projects   = trimmed.get("projects") or []
+    EXP_FLOOR  = 3
+    PROJ_FLOOR = 2
+
+    for _ in range(30):
+        pdf = _build_resume_pdf(trimmed, target_pages=1)
+        if _pdf_page_count(pdf) <= max_pages:
+            return pdf
+
+        trimmed_any = False
+        # Oldest role is assumed last in the list (standard reverse-chronological order)
+        for exp in reversed(experience):
+            bullets = exp.get("bullets") or []
+            if len(bullets) > EXP_FLOOR:
+                exp["bullets"] = bullets[:-1]
+                trimmed_any = True
+                break
+        if not trimmed_any:
+            for proj in reversed(projects):
+                bullets = proj.get("bullets") or []
+                if len(bullets) > PROJ_FLOOR:
+                    proj["bullets"] = bullets[:-1]
+                    trimmed_any = True
+                    break
+        if not trimmed_any and len(projects) > 1:
+            # Last resort — drop the least-relevant (last-listed) project entirely
+            projects.pop()
+            trimmed_any = True
+
+        if not trimmed_any:
+            break  # nothing left that can be safely trimmed — return best effort
+
+    return pdf
 
 
 def _build_cover_pdf(profile_dict: dict, cover_body: str, job_title: str = "") -> bytes:
@@ -2127,6 +2514,75 @@ def _build_cover_pdf(profile_dict: dict, cover_body: str, job_title: str = "") -
     return buf.getvalue()
 
 
+def _generate_application_kit(raw_cv: str, jd: str, years_of_experience, profile_dict: dict, original_pages=1) -> dict:
+    """Shared pipeline: a JD-tailored, ATS-optimized resume plus cover letter,
+    cold email, and LinkedIn outreach notes — all precision-targeted to one
+    job description. Used by both the saved-CV-profile Resume tab and the
+    paste-anything Resume Builder tab, so every entry point into resume
+    generation goes through the exact same senior-resume-architect pipeline."""
+    resume_data = _generate_resume_content(raw_cv, jd, years_of_experience=years_of_experience)
+
+    # Backfill name/title from the freshly generated resume if the caller's
+    # profile dict didn't have them (e.g. a directly pasted resume with no
+    # saved CV profile) — keeps the downloaded filename personalized.
+    if not profile_dict.get("full_name"):
+        profile_dict["full_name"] = resume_data.get("full_name", "")
+    if not profile_dict.get("current_job_title"):
+        profile_dict["current_job_title"] = resume_data.get("title", "")
+
+    # Extract job title from first 300 chars of JD for cover letter Re: line
+    jd_title = ""
+    for line in jd[:300].splitlines():
+        line = line.strip()
+        if line and len(line) < 80:
+            jd_title = line
+            break
+
+    # Personalise system prompts to the actual candidate — never hardcode a name
+    candidate_name = (profile_dict.get("full_name") or "").strip() or "the candidate"
+    outreach_ctx = (
+        f"=== CANDIDATE BACKGROUND — frame everything to match the JD as closely as possible ===\n{raw_cv[:3000]}\n\n"
+        f"=== TARGET JOB DESCRIPTION — every document must be precision-targeted to THIS role ===\n{jd[:2000]}"
+    )
+    email_sys    = EMAIL_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
+    li_conn_sys  = LINKEDIN_CONNECT_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
+    li_msg_sys   = LINKEDIN_MSG_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
+
+    cover_body       = _generate_text(COVER_SYSTEM,   outreach_ctx, 1500)
+    cold_email       = _generate_text(email_sys,       outreach_ctx, 600)
+    linkedin_connect = _generate_text(li_conn_sys,     outreach_ctx, 150)
+    linkedin_msg     = _generate_text(li_msg_sys,      outreach_ctx, 600)
+
+    # Enforce LinkedIn connection note 300-char hard limit
+    if len(linkedin_connect) > 300:
+        linkedin_connect = linkedin_connect[:297].rstrip() + "..."
+
+    cache = {
+        "resume_data":    resume_data,
+        "cover_body":     cover_body,
+        "profile":        profile_dict,
+        "jd":             jd,
+        "jd_title":       jd_title,
+        "original_pages": original_pages,
+    }
+    app.config["_resume_cache"] = cache
+    _cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".resume_cache.json")
+    try:
+        with open(_cache_path, "w", encoding="utf-8") as _cf:
+            json.dump(cache, _cf, ensure_ascii=False)
+    except Exception:
+        pass
+
+    return {
+        "resume":           resume_data,
+        "cover_letter":     cover_body,
+        "cold_email":       cold_email,
+        "linkedin_connect": linkedin_connect,
+        "linkedin_msg":     linkedin_msg,
+        "ats_keywords":     resume_data.get("ats_keywords_added", []),
+    }
+
+
 @app.route("/api/resume/generate", methods=["POST"])
 def generate_resume():
     profile = _get_active_profile()
@@ -2142,59 +2598,55 @@ def generate_resume():
     p_dict = profile.to_dict()
 
     try:
-        resume_data   = _generate_resume_content(raw_cv, jd)
-
-        # Extract job title from first 300 chars of JD for cover letter Re: line
-        jd_title = ""
-        for line in jd[:300].splitlines():
-            line = line.strip()
-            if line and len(line) < 80:
-                jd_title = line
-                break
-
-        # Personalise system prompts to the actual uploaded user — never hardcode a name
-        candidate_name = (p_dict.get("full_name") or "").strip() or "the candidate"
-        outreach_ctx = (
-            f"=== CANDIDATE BACKGROUND — frame everything to match the JD as closely as possible ===\n{raw_cv[:3000]}\n\n"
-            f"=== TARGET JOB DESCRIPTION — every document must be precision-targeted to THIS role ===\n{jd[:2000]}"
+        result = _generate_application_kit(
+            raw_cv, jd, p_dict.get("years_of_experience"), p_dict,
+            original_pages=profile.original_page_count or 1,
         )
-        email_sys    = EMAIL_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
-        li_conn_sys  = LINKEDIN_CONNECT_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
-        li_msg_sys   = LINKEDIN_MSG_SYSTEM.replace("{CANDIDATE_NAME}", candidate_name)
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Generation failed: {e}"}), 500
 
-        cover_body       = _generate_text(COVER_SYSTEM,   outreach_ctx, 1500)
-        cold_email       = _generate_text(email_sys,       outreach_ctx, 600)
-        linkedin_connect = _generate_text(li_conn_sys,     outreach_ctx, 150)
-        linkedin_msg     = _generate_text(li_msg_sys,      outreach_ctx, 600)
 
-        # Enforce LinkedIn connection note 300-char hard limit
-        if len(linkedin_connect) > 300:
-            linkedin_connect = linkedin_connect[:297].rstrip() + "..."
+@app.route("/api/resume-builder/generate", methods=["POST"])
+def resume_builder_generate():
+    """Resume Builder dashboard: paste any resume text + any job description,
+    no saved CV profile required. Runs the exact same senior-resume-architect
+    pipeline as the Resume tab — Tarun-template PDF, strict page cap, 90-95%
+    ATS-targeted content — against whatever's pasted in, for whoever is using
+    it. Falls back to the active saved profile's CV text if nothing is pasted."""
+    data = request.json or {}
+    resume_text = (data.get("resume_text") or "").strip()
+    jd = (data.get("jd") or "").strip()
 
-        cache = {
-            "resume_data":    resume_data,
-            "cover_body":     cover_body,
-            "profile":        p_dict,
-            "jd":             jd,
-            "jd_title":       jd_title,
-            "original_pages": profile.original_page_count or 1,
-        }
-        app.config["_resume_cache"] = cache
-        _cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".resume_cache.json")
-        try:
-            with open(_cache_path, "w", encoding="utf-8") as _cf:
-                json.dump(cache, _cf, ensure_ascii=False)
-        except Exception:
-            pass
+    if not jd:
+        return jsonify({"error": "Please paste the job description."}), 400
 
-        return jsonify({
-            "resume":           resume_data,
-            "cover_letter":     cover_body,
-            "cold_email":       cold_email,
-            "linkedin_connect": linkedin_connect,
-            "linkedin_msg":     linkedin_msg,
-            "ats_keywords":     resume_data.get("ats_keywords_added", []),
-        })
+    if not resume_text:
+        profile = _get_active_profile()
+        if profile and profile.raw_text:
+            resume_text = profile.raw_text
+
+    if len(resume_text) < 50:
+        return jsonify({"error": "Please paste your resume/CV text (or upload one first on the Upload CV tab)."}), 400
+
+    years_hint = _estimate_years_of_experience(resume_text)
+    contact    = _extract_contact_info(resume_text)
+    profile_dict = {
+        "full_name": "", "current_job_title": "",
+        "years_of_experience": years_hint,
+        "contact_email": contact.get("contact_email", ""),
+        "phone":         contact.get("phone", ""),
+        "linkedin_url":  contact.get("linkedin_url", ""),
+        "github_url":    contact.get("github_url", ""),
+        "portfolio_url": "", "location_text": "",
+    }
+
+    try:
+        result = _generate_application_kit(resume_text, jd, years_hint, profile_dict, original_pages=1)
+        result["years_of_experience_detected"] = years_hint
+        return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -2223,12 +2675,11 @@ def download_doc(doc_type):
             for key in ("contact_email","phone","linkedin_url","github_url","portfolio_url","location_text"):
                 if not rd.get(key):
                     rd[key] = p.get(key, "")
-            orig_pages = cache.get("original_pages", p.get("original_page_count", 1)) or 1
-            try:
-                orig_pages = int(float(orig_pages))
-            except (TypeError, ValueError):
-                orig_pages = 1
-            pdf        = _build_resume_pdf(rd, target_pages=orig_pages)
+            # Page count target is driven by years of experience, not the
+            # length of whatever resume the candidate originally uploaded —
+            # a 9-year veteran's new resume must still cap at 3 pages, and a
+            # 2-year candidate's should stay to 1-2 pages.
+            pdf = _fit_resume_to_pages(rd, years_of_experience=p.get("years_of_experience"))
             name_slug  = _name_to_slug(p.get("full_name") or "resume")
             role_slug  = _name_to_slug(p.get("current_job_title") or "")
             filename   = f"{name_slug}_{role_slug}_resume.pdf" if role_slug else f"{name_slug}_resume.pdf"
@@ -2322,15 +2773,9 @@ def interview_prep():
         profile = _get_active_profile()
         cv_text = profile.raw_text if profile else ""
         client  = get_anthropic()
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=4000,
-            system=INTERVIEW_SYSTEM,
-            messages=[{"role": "user", "content":
-                f"=== CANDIDATE RESUME ===\n{cv_text}\n\n=== JOB DESCRIPTION ===\n{jd}"}],
-        )
-        text = msg.content[0].text.strip()
-        result = _parse_lenient_json(text)
+        result = _ai_json(client, "claude-haiku-4-5-20251001", INTERVIEW_SYSTEM,
+                           f"=== CANDIDATE RESUME ===\n{cv_text}\n\n=== JOB DESCRIPTION ===\n{jd}",
+                           max_tokens=4000)
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -2352,15 +2797,10 @@ def screening_script():
             return jsonify({"error": "Paste your resume on the left side (or upload your CV first)."}), 400
 
         client = get_anthropic()
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=8000,
-            system=SCREENING_SYSTEM,
-            messages=[{"role": "user", "content":
-                f"=== CANDIDATE RESUME ===\n{resume[:8000]}\n\n=== JOB DESCRIPTION ===\n{jd[:6000]}"}],
-        )
-        text = msg.content[0].text.strip()
-        return jsonify(_parse_lenient_json(text))
+        result = _ai_json(client, "claude-sonnet-4-6", SCREENING_SYSTEM,
+                           f"=== CANDIDATE RESUME ===\n{resume[:8000]}\n\n=== JOB DESCRIPTION ===\n{jd[:6000]}",
+                           max_tokens=8000)
+        return jsonify(result)
     except (json.JSONDecodeError, ValueError):
         return jsonify({"error": "The AI response could not be read — please click the button once more."}), 500
     except Exception as exc:
@@ -2377,15 +2817,9 @@ def salary_estimate():
         profile = _get_active_profile()
         cv_text = profile.raw_text if profile else ""
         client  = get_anthropic()
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=800,
-            system=SALARY_SYSTEM,
-            messages=[{"role": "user", "content":
-                f"=== CANDIDATE BACKGROUND ===\n{cv_text}\n\n=== JOB DESCRIPTION ===\n{jd}"}],
-        )
-        text = msg.content[0].text.strip()
-        result = _parse_lenient_json(text)
+        result = _ai_json(client, "claude-haiku-4-5-20251001", SALARY_SYSTEM,
+                           f"=== CANDIDATE BACKGROUND ===\n{cv_text}\n\n=== JOB DESCRIPTION ===\n{jd}",
+                           max_tokens=800)
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -2399,14 +2833,8 @@ def company_research():
         if not jd:
             return jsonify({"error": "Job description is required"}), 400
         client = get_anthropic()
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1200,
-            system=COMPANY_RESEARCH_SYSTEM,
-            messages=[{"role": "user", "content": f"=== JOB DESCRIPTION ===\n{jd}"}],
-        )
-        text = msg.content[0].text.strip()
-        result = _parse_lenient_json(text)
+        result = _ai_json(client, "claude-haiku-4-5-20251001", COMPANY_RESEARCH_SYSTEM,
+                           f"=== JOB DESCRIPTION ===\n{jd}", max_tokens=1200)
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -2431,14 +2859,7 @@ def follow_up_email():
         if job.job_description:
             context += f"\nJob description excerpt:\n{job.job_description[:800]}"
         client = get_anthropic()
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            system=FOLLOW_UP_SYSTEM,
-            messages=[{"role": "user", "content": context}],
-        )
-        text = msg.content[0].text.strip()
-        result = _parse_lenient_json(text)
+        result = _ai_json(client, "claude-haiku-4-5-20251001", FOLLOW_UP_SYSTEM, context, max_tokens=500)
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -2461,16 +2882,10 @@ def rejection_analysis():
             for j in rejected
         )
         client = get_anthropic()
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2500,
-            system=REJECTION_SYSTEM,
-            messages=[{"role": "user", "content":
-                f"=== CANDIDATE CV ===\n{cv_text[:3000]}\n\n"
-                f"=== REJECTED JOB DESCRIPTIONS ({len(rejected)} roles) ===\n{jds}"}],
-        )
-        text = msg.content[0].text.strip()
-        result = _parse_lenient_json(text)
+        result = _ai_json(client, "claude-haiku-4-5-20251001", REJECTION_SYSTEM,
+                           f"=== CANDIDATE CV ===\n{cv_text[:3000]}\n\n"
+                           f"=== REJECTED JOB DESCRIPTIONS ({len(rejected)} roles) ===\n{jds}",
+                           max_tokens=2500)
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -2580,18 +2995,18 @@ def test_keys():
 @app.route("/api/session-start", methods=["POST"])
 def session_start():
     """Called once per browser session (new tab / reopened site).
-    FULL clean slate: wipes all jobs, tracker history, CV profiles, and the
-    search cache — every visitor opens a completely fresh website.
-    (Reloading the page within the same tab keeps your data — only closing
-    and reopening the site triggers the wipe.)"""
+    Clears only stale, unsaved search-feed results (status="Saved") and the
+    search cache, so the Job Feed opens fresh instead of showing yesterday's
+    search. Tracker history (Applied/Interviewing/Rejected/etc.) and your CV
+    profile are never touched here — those persist until you explicitly use
+    "Start Fresh" (/api/reset)."""
     try:
-        jobs_n = Job.query.delete()
-        prof_n = CVProfile.query.delete()
+        jobs_n = Job.query.filter_by(status="Saved").delete()
         db.session.commit()
         _SEARCH_CACHE.clear()
-        if jobs_n or prof_n:
-            print(f"[Session] New session — fresh slate ({jobs_n} jobs, {prof_n} profiles cleared)")
-        return jsonify({"ok": True, "cleared_jobs": jobs_n, "cleared_profiles": prof_n})
+        if jobs_n:
+            print(f"[Session] New session — cleared {jobs_n} stale search result(s)")
+        return jsonify({"ok": True, "cleared_jobs": jobs_n, "cleared_profiles": 0})
     except Exception as exc:
         db.session.rollback()
         return jsonify({"error": str(exc)}), 500
@@ -2651,11 +3066,8 @@ if __name__ == "__main__":
         con.commit()
         con.close()
 
-        # ── Freshness: every server start is a completely clean slate ─────────
-        _j = Job.query.delete()
-        _p = CVProfile.query.delete()
-        db.session.commit()
-        if _j or _p:
-            print(f"[Boot] Fresh start — cleared {_j} jobs and {_p} CV profiles")
+        _mtime = dt.datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[JobRadar] Running {os.path.abspath(__file__)}")
+        print(f"[JobRadar] Source last modified: {_mtime}  (if this looks old, you're running stale code — stop this process and start it again)")
 
         app.run(debug=True, port=5000, use_reloader=False)
