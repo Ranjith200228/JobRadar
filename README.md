@@ -41,7 +41,7 @@
 
 ## What It Does
 
-JobRadar is a personal job search command center built with Flask + Claude AI. Paste a job description and it instantly generates a tailored ATS-optimized resume, professional cover letter, cold outreach email, and two LinkedIn messages — using only your real experience, never fabricated facts.
+JobRadar is a personal job search command center built with Flask + Claude AI. Paste a job description and it instantly generates an impressive, ATS-friendly resume tailored to the role, plus a professional cover letter, cold outreach email, and two LinkedIn messages — all built from your real experience.
 
 ---
 
@@ -58,7 +58,7 @@ JobRadar is a personal job search command center built with Flask + Claude AI. P
 - Cold outreach email written in your own voice — no AI-sounding phrases
 - LinkedIn connection request note (300-char strict limit)
 - LinkedIn outreach message (InMail-ready, 200+ words)
-- Zero fabrication — Claude only reframes your real experience to match the role
+- Generates an impressive, ATS-friendly resume by reframing your real experience to match the role
 
 **Job Tracker**
 - Kanban board: Applied → Phone Screen → Interview → Offer → Rejected
