@@ -16,6 +16,29 @@
 
 ---
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="screenshots/01-job-feed.jpg" alt="Job Feed"/><br/><sub><b>Job Feed</b> — live listings scraped and scored against your CV the moment you search</sub></td>
+<td width="50%"><img src="screenshots/02-tracker.jpg" alt="Tracker"/><br/><sub><b>Tracker</b> — drag-and-drop kanban pipeline from Applied to Offer</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="screenshots/03-dashboard.jpg" alt="Dashboard"/><br/><sub><b>Dashboard</b> — real-time application stats, response rate, and streaks</sub></td>
+<td width="50%"><img src="screenshots/04-dashboard-ai-mission.jpg" alt="Today's Mission"/><br/><sub><b>Today's Mission</b> — Claude-generated daily action plan and job search score</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="screenshots/05-resume-generator.jpg" alt="Resume Generator"/><br/><sub><b>Resume Generator</b> — paste a JD, get an ATS-optimized resume, cover letter, and outreach messages</sub></td>
+<td width="50%"><img src="screenshots/06-skill-gap.jpg" alt="Skill Gap Analyzer"/><br/><sub><b>Skill Gap Analyzer</b> — see exactly what to learn next and why it matters</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="screenshots/07-upload-cv.jpg" alt="Upload CV"/><br/><sub><b>Upload CV</b> — drop a PDF and Claude parses your experience instantly</sub></td>
+<td width="50%"><img src="screenshots/08-resume-builder-pro.jpg" alt="Resume Builder Pro"/><br/><sub><b>Resume Builder Pro</b> — paste any resume + JD, no saved profile required</sub></td>
+</tr>
+</table>
+
+---
+
 ## What It Does
 
 JobRadar is a personal job search command center built with Flask + Claude AI. Paste a job description and it instantly generates a tailored ATS-optimized resume, professional cover letter, cold outreach email, and two LinkedIn messages — using only your real experience, never fabricated facts.
